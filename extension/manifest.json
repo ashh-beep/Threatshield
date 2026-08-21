@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Gatekeeper (Universal In-page Risk Toast)",
   "version": "1.0.0",
-  "description": "Shows an in-page risk toast on as many sites as possible (SPA-friendly) and opens report only on button click.",
-  "permissions": ["webNavigation", "storage", "tabs"],
+  "description": "Shows an in-page risk toast on as many sites as possible (SPA-friendly) and opens report only on button click. Requires authentication for personalized protection.",
+  "permissions": ["webNavigation", "storage", "tabs", "activeTab"],
   "host_permissions": [
     "<all_urls>",
     "http://localhost:5001/*"
@@ -15,5 +15,9 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gatekeeper - URL Security Scanner"
+  }
 }

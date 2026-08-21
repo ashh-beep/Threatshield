@@ -1,8 +1,26 @@
-// gatekeeper/extension/background.js
-// Uses the new /api/analyze endpoint for full 3-stage pipeline results.
+// Gatekeeper Extension Background Script
+// Uses JWT authentication for personalized scanning
 
 const WEBAPP_BASE = "http://localhost:5001";
 const ANALYZE_API = `${WEBAPP_BASE}/api/analyze`;
+const SCANS_API = `${WEBAPP_BASE}/api/scans`;
+
+let currentToken = null;
+let currentUser = null;
+let settings = {
+  protection_enabled: true,
+  auto_scan_enabled: true
+};
+
+// Load token and user from storage on startup
+async function loadAuth() {
+  const result = await chrome.storage.local.get(['gatekeeper_token', 'gatekeeper_user', 'protection_enabled', 'auto_scan_enabled']);
+  currentToken = result.gatekeeper_token || null;
+  currentUser = result.gatekeeper_user || null;
+  settings.protection_enabled = result.protection_enabled !== false;
+  settings.auto_scan_enabled = result.auto_scan_enabled !== false;
+  console.log('Gatekeeper: Auth loaded', { hasToken: !!currentToken, user: currentUser?.email, settings });
+}
 
 function shouldIgnoreUrl(url) {
   if (!url) return true;
@@ -21,16 +39,56 @@ function isHttpUrl(url) {
 }
 
 async function analyzeUrl(url) {
+  if (!currentToken) {
+    throw new Error('Not authenticated');
+  }
+  
   const res = await fetch(ANALYZE_API, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${currentToken}`
+    },
     body: JSON.stringify({ url })
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    if (res.status === 401) {
+      await handleUnauthorized();
+    }
     throw new Error(`Analyze API ${res.status}: ${text}`);
   }
   return await res.json();
+}
+
+async function saveScan(scanData) {
+  if (!currentToken) {
+    throw new Error('Not authenticated');
+  }
+  
+  const res = await fetch(SCANS_API, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${currentToken}`
+    },
+    body: JSON.stringify(scanData)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    if (res.status === 401) {
+      await handleUnauthorized();
+    }
+    throw new Error(`Save scan API ${res.status}: ${text}`);
+  }
+  return await res.json();
+}
+
+async function handleUnauthorized() {
+  console.log('Gatekeeper: Token expired, clearing auth');
+  await chrome.storage.local.remove(['gatekeeper_token', 'gatekeeper_refresh_token', 'gatekeeper_user']);
+  currentToken = null;
+  currentUser = null;
 }
 
 async function ensureContentScript(tabId, maxRetries = 8) {
@@ -81,6 +139,8 @@ async function sendResult(tabId, url, out) {
 async function handleUrl(tabId, url) {
   try {
     if (!tabId || !isHttpUrl(url) || shouldIgnoreUrl(url)) return;
+    if (!settings.protection_enabled) return;
+    if (!currentToken) return;
 
     // Debounce — skip if same URL was checked in the last 3 seconds
     const key = `last:${tabId}`;
@@ -89,26 +149,91 @@ async function handleUrl(tabId, url) {
     await chrome.storage.session.set({ [key]: { url, t: Date.now() } });
 
     const out = await analyzeUrl(url);
-    if (out) await sendResult(tabId, url, out);
+    if (out) {
+      // Save scan to user's history
+      if (currentUser) {
+        const scanData = {
+          url: out.url,
+          verdict: out.verdict.toLowerCase(),
+          risk_score: out.risk_score,
+          risk_color: out.risk_color,
+          phishing_probability: out.phishing_probability || 0,
+          prediction: out.prediction,
+          reasons: out.reasons || [],
+          stages: out.stages || {},
+          page_inspect_result: out.stages?.page_inspect || {},
+          organization_id: currentUser.memberships?.[0]?.organization_id || null
+        };
+        try {
+          await saveScan(scanData);
+        } catch (e) {
+          console.error('Gatekeeper: Failed to save scan', e.message);
+        }
+      }
+      await sendResult(tabId, url, out);
+    }
   } catch (e) {
     console.error("Gatekeeper error:", e.message);
   }
 }
 
-// ── Navigation event listeners ────────────────────────────────────────────────
+// Message listener
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "GATEKEEPER_LOGOUT") {
+    handleUnauthorized();
+    sendResponse({ ok: true });
+    return true;
+  }
+  
+  if (message?.type === "GATEKEEPER_SETTINGS_UPDATE") {
+    if (message.protection_enabled !== undefined) {
+      settings.protection_enabled = message.protection_enabled;
+    }
+    if (message.auto_scan_enabled !== undefined) {
+      settings.auto_scan_enabled = message.auto_scan_enabled;
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+  
+  if (message?.type === "GATEKEEPER_AUTH_UPDATE") {
+    loadAuth();
+    sendResponse({ ok: true });
+    return true;
+  }
+  
+  return false;
+});
 
+// Navigation event listeners
 chrome.webNavigation.onCommitted.addListener((d) => {
   if (d.frameId !== 0) return;
-  handleUrl(d.tabId, d.url);
+  if (settings.auto_scan_enabled) {
+    handleUrl(d.tabId, d.url);
+  }
 });
 
 chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
   if (d.frameId !== 0) return;
-  handleUrl(d.tabId, d.url);
+  if (settings.auto_scan_enabled) {
+    handleUrl(d.tabId, d.url);
+  }
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete") return;
   if (!tab?.url) return;
-  handleUrl(tabId, tab.url);
+  if (settings.auto_scan_enabled) {
+    handleUrl(tabId, tab.url);
+  }
+});
+
+// Initialize on startup
+loadAuth();
+
+// Listen for storage changes (e.g., login from popup)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.gatekeeper_token || changes.gatekeeper_user)) {
+    loadAuth();
+  }
 });
