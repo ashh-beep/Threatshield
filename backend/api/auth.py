@@ -1,10 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app, url_for
 from sqlalchemy.exc import IntegrityError
 from authlib.integrations.flask_client import OAuth
 import requests
+import hashlib
+import secrets
 
-from backend.models import db, User, UserRole, ActivityLog, ActivityType
+from backend.models import db, User, UserRole, ActivityLog, ActivityType, InviteToken
 from backend.auth_utils import (
     hash_password, verify_password,
     generate_access_token, generate_refresh_token,
@@ -496,3 +498,116 @@ def extension_status():
         'linked': user.extension_token is not None,
         'linked_at': user.extension_linked_at.isoformat() if user.extension_linked_at else None
     })
+
+
+@auth_bp.get('/invite/<token>')
+def validate_invite_token(token):
+    """Validate an invitation token without accepting it."""
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invite = InviteToken.query.filter_by(token_hash=token_hash).first()
+
+    if not invite:
+        return jsonify({'error': 'Invalid invitation token'}), 404
+
+    if invite.accepted_at:
+        return jsonify({'error': 'Invitation has already been accepted'}), 400
+
+    if invite.expires_at < datetime.utcnow():
+        return jsonify({'error': 'Invitation has expired'}), 400
+
+    return jsonify({
+        'valid': True,
+        'email': invite.email,
+        'first_name': invite.first_name,
+        'last_name': invite.last_name,
+        'organization_name': invite.organization.name,
+        'expires_at': invite.expires_at.isoformat(),
+    })
+
+
+@auth_bp.post('/invite/<token>/accept')
+def accept_invite_token(token):
+    """Accept an invitation and create the user account."""
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invite = InviteToken.query.filter_by(token_hash=token_hash).first()
+
+    if not invite:
+        return jsonify({'error': 'Invalid invitation token'}), 404
+
+    if invite.accepted_at:
+        return jsonify({'error': 'Invitation has already been accepted'}), 400
+
+    if invite.expires_at < datetime.utcnow():
+        return jsonify({'error': 'Invitation has expired'}), 400
+
+    data = request.get_json(silent=True) or {}
+    password = data.get('password') or ''
+
+    if not password:
+        return jsonify({'error': 'Password is required'}), 400
+
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+    # Check if user already exists
+    if User.query.filter_by(email=invite.email).first():
+        return jsonify({'error': 'User with this email already exists'}), 409
+
+    org = invite.organization
+    
+    # Check license limits
+    current_users = User.query.join(Membership).filter(
+        Membership.organization_id == org.id,
+        User.role == UserRole.USER
+    ).count()
+    
+    if current_users >= org.max_users:
+        return jsonify({'error': 'License limit reached for this organization'}), 403
+
+    from backend.auth_utils import hash_password
+    user = User(
+        email=invite.email,
+        password_hash=hash_password(password),
+        first_name=invite.first_name,
+        last_name=invite.last_name,
+        role=UserRole.USER,
+        is_active=True,
+        is_verified=True,
+        is_provisioned=True,
+        auth_method='password'
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    # Create membership
+    membership = Membership(
+        user_id=user.id,
+        organization_id=org.id,
+        role=MembershipRole.MEMBER
+    )
+    db.session.add(membership)
+
+    # Mark invitation as accepted
+    invite.accepted_at = datetime.utcnow()
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=user.id,
+        organization_id=org.id,
+        type=ActivityType.USER_INVITE_ACCEPTED,
+        description=f'User accepted invitation: {invite.email}',
+        metadata={'invite_id': str(invite.id)},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    # Generate tokens for the new user
+    access_token = generate_access_token(str(user.id), user.role.value, str(org.id))
+    refresh_token = generate_refresh_token(str(user.id))
+
+    return jsonify({
+        'user': user.to_dict(include_sensitive=True),
+        'access_token': access_token,
+        'refresh_token': refresh_token
+    }), 201

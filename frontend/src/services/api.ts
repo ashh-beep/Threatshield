@@ -807,6 +807,49 @@ class ApiService {
     if (params?.search) searchParams.set('search', params.search);
     return this.request(`/org-admin/activity?${searchParams.toString()}`, {}, true);
   }
+
+  async orgAdminListInvitations(params?: { page?: number; per_page?: number }): Promise<PaginatedResponse<any>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
+    return this.request(`/org-admin/invitations?${searchParams.toString()}`, {}, true);
+  }
+
+  async orgAdminInviteUser(data: { email: string; first_name: string; last_name: string }): Promise<{ message: string; invite_url: string; expires_at: string; invitation_id: string }> {
+    return this.request<{ message: string; invite_url: string; expires_at: string; invitation_id: string }>('/org-admin/users/invite', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
+  async orgAdminResendInvitation(inviteId: string): Promise<{ invitation: any; invite_link: string }> {
+    return this.request<{ invitation: any; invite_link: string }>(`/org-admin/invitations/${inviteId}/resend`, {
+      method: 'POST',
+    }, true);
+  }
+
+  async orgAdminCancelInvitation(inviteId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/org-admin/invitations/${inviteId}`, {
+      method: 'DELETE',
+    }, true);
+  }
+
+  async orgAdminGetLicense(): Promise<{
+    license: {
+      plan_name: string;
+      plan_status: string;
+      max_users: number;
+      users_used: number;
+      users_remaining: number;
+      scans_per_month: number;
+      scans_used: number;
+      scans_remaining: number;
+      license_expiry: string | null;
+      is_expired: boolean;
+    }
+  }> {
+    return this.request('/org-admin/license', {}, true);
+  }
 }
 
 export const api = new ApiService();

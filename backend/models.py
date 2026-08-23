@@ -94,6 +94,13 @@ class ActivityType(str, Enum):
     USER_PROVISIONED = 'user_provisioned'
     USER_DEPROVISIONED = 'user_deprovisioned'
     AUTH_CONFIG_UPDATED = 'auth_config_updated'
+    LICENSE_UPDATED = 'license_updated'
+    LICENSE_SUSPENDED = 'license_suspended'
+    LICENSE_REACTIVATED = 'license_reactivated'
+    USER_INVITED = 'user_invited'
+    USER_INVITE_ACCEPTED = 'user_invite_accepted'
+    USER_INVITE_CANCELLED = 'user_invite_cancelled'
+    USER_INVITE_RESENT = 'user_invite_resent'
 
 
 class User(db.Model):
@@ -160,10 +167,19 @@ class Organization(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    # License fields
+    plan_name = db.Column(db.String(50), nullable=True)  # starter, business, enterprise
+    plan_status = db.Column(db.String(50), default='active', nullable=False)  # active, suspended, expired
+    max_users = db.Column(db.Integer, default=5, nullable=False)
+    scans_per_month = db.Column(db.Integer, default=100, nullable=False)
+    monthly_scan_limit = db.Column(db.Integer, default=100, nullable=False)
+    license_expiry = db.Column(db.DateTime, nullable=True)
+
     memberships = db.relationship('Membership', back_populates='organization', cascade='all, delete-orphan')
     scans = db.relationship('Scan', back_populates='organization', cascade='all, delete-orphan')
     activity_logs = db.relationship('ActivityLog', back_populates='organization', cascade='all, delete-orphan')
     auth_config = db.relationship('OrganizationAuthConfig', back_populates='organization', cascade='all, delete-orphan', uselist=False)
+    invite_tokens = db.relationship('InviteToken', back_populates='organization', cascade='all, delete-orphan')
 
     def __repr__(self):
         return f'<Organization {self.name}>'
@@ -179,6 +195,12 @@ class Organization(db.Model):
             'sso_configured': bool(self.sso_config.get('client_id')),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
+            'plan_name': self.plan_name,
+            'plan_status': self.plan_status,
+            'max_users': self.max_users,
+            'scans_per_month': self.scans_per_month,
+            'monthly_scan_limit': self.monthly_scan_limit,
+            'license_expiry': self.license_expiry.isoformat() if self.license_expiry else None,
         }
         if include_sensitive:
             data['sso_config'] = {k: v for k, v in self.sso_config.items() if k != 'client_secret'}
@@ -240,6 +262,45 @@ class OrganizationAuthConfig(db.Model):
         if include_sensitive:
             data['sso_client_secret'] = self.sso_client_secret
             data['email_auth_template'] = self.email_auth_template
+        return data
+
+
+class InviteToken(db.Model):
+    __tablename__ = 'invite_tokens'
+
+    id = db.Column(GUID(), primary_key=True, default=uuid.uuid4)
+    organization_id = db.Column(GUID(), db.ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False, index=True)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
+    token_hash = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    invited_by = db.Column(GUID(), db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    organization = db.relationship('Organization', back_populates='invite_tokens')
+    inviter = db.relationship('User', foreign_keys=[invited_by])
+
+    def __repr__(self):
+        return f'<InviteToken {self.email} org={self.organization_id}>'
+
+    def to_dict(self, include_token=False):
+        data = {
+            'id': str(self.id),
+            'organization_id': str(self.organization_id),
+            'email': self.email,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'expires_at': self.expires_at.isoformat(),
+            'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
+            'created_at': self.created_at.isoformat(),
+            'invited_by': str(self.invited_by) if self.invited_by else None,
+            'is_expired': datetime.utcnow() > self.expires_at,
+            'is_accepted': self.accepted_at is not None,
+        }
+        if include_token:
+            data['token'] = self.token_hash  # Only for the one-time response
         return data
 
 

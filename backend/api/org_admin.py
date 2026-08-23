@@ -1,10 +1,13 @@
-from flask import Blueprint, request, jsonify, g
+from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy import func, or_
+import hashlib
+import secrets
 
 from backend.models import (
     db, User, UserRole, Organization, OrganizationStatus, 
     Membership, MembershipRole, ActivityLog, ActivityType,
-    OrganizationAuthConfig
+    OrganizationAuthConfig, InviteToken
 )
 from backend.auth_utils import require_auth, require_role, get_current_user
 
@@ -601,5 +604,243 @@ def org_admin_activity():
             'per_page': pagination.per_page,
             'total': pagination.total,
             'pages': pagination.pages
+        }
+    })
+
+
+@org_admin_bp.get('/invitations')
+@require_role('org_admin')
+def org_admin_list_invitations():
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 20, type=int), 100)
+
+    query = InviteToken.query.filter_by(organization_id=org_id).order_by(InviteToken.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'invitations': [i.to_dict() for i in pagination.items],
+        'pagination': {
+            'page': pagination.page,
+            'per_page': pagination.per_page,
+            'total': pagination.total,
+            'pages': pagination.pages
+        }
+    })
+
+
+@org_admin_bp.post('/users/invite')
+@require_role('org_admin')
+def org_admin_invite_user():
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
+
+    # Check license limits
+    current_users = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.role == UserRole.USER
+    ).count()
+    
+    if current_users >= org.max_users:
+        return jsonify({'error': f'License limit reached. Maximum {org.max_users} users allowed.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    first_name = (data.get('first_name') or '').strip()
+    last_name = (data.get('last_name') or '').strip()
+
+    if not email or not first_name or not last_name:
+        return jsonify({'error': 'Email, first name, and last name are required'}), 400
+
+    # Check for existing ACTIVE user in THIS organization
+    existing_user = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.email == email,
+        User.role == UserRole.USER
+    ).first()
+
+    if existing_user:
+        current_app.logger.warning(f"Invite conflict: Active user exists in org {org_id} for email {email}")
+        return jsonify({'error': 'Email already exists in this organization'}), 409
+
+    # Check for existing invitation in THIS organization - get the latest
+    existing_invite = InviteToken.query.filter_by(
+        organization_id=org_id,
+        email=email
+    ).order_by(InviteToken.created_at.desc()).first()
+
+    if existing_invite:
+        # Temporary server log
+        current_app.logger.info(
+            f"Invite check: email={email} org_id={org_id} "
+            f"status={'accepted' if existing_invite.accepted_at else 'pending'} "
+            f"expires_at={existing_invite.expires_at.isoformat()} "
+            f"accepted_at={existing_invite.accepted_at.isoformat() if existing_invite.accepted_at else None}"
+        )
+
+        if existing_invite.accepted_at is not None:
+            # Already used - create new invite
+            current_app.logger.info(f"Invite reuse: Used invitation {existing_invite.id} for {email} in org {org_id}, creating new")
+        elif existing_invite.expires_at <= datetime.utcnow():
+            # Expired - create new invite
+            current_app.logger.info(f"Invite reuse: Expired invitation {existing_invite.id} for {email} in org {org_id}, creating new")
+        else:
+            # Pending and unexpired - return 409
+            current_app.logger.warning(f"Invite conflict: Pending invitation {existing_invite.id} exists for {email} in org {org_id}")
+            return jsonify({'error': 'Pending invitation already exists'}), 409
+
+        # Invalidate old invitation (expired or accepted)
+        db.session.delete(existing_invite)
+        db.session.commit()
+
+    # Generate secure token
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(hours=24)
+
+    invite = InviteToken(
+        organization_id=org_id,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        token_hash=token_hash,
+        invited_by=g.current_user['sub'],
+        expires_at=expires_at
+    )
+    db.session.add(invite)
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=g.current_user['sub'],
+        organization_id=org_id,
+        type=ActivityType.USER_INVITED,
+        description=f'Org admin invited user: {email}',
+        metadata={'email': email, 'invite_id': str(invite.id)},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    invite_url = f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+    return jsonify({
+        'message': 'Invitation created',
+        'invite_url': invite_url,
+        'expires_at': expires_at.isoformat()
+    }), 201
+
+
+@org_admin_bp.post('/invitations/<invite_id>/resend')
+@require_role('org_admin')
+def org_admin_resend_invitation(invite_id):
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    invite = InviteToken.query.filter_by(id=invite_id, organization_id=org_id).first()
+    if not invite:
+        return jsonify({'error': 'Invitation not found'}), 404
+
+    if invite.accepted_at:
+        return jsonify({'error': 'Cannot resend accepted invitation'}), 400
+
+    # Generate new token
+    raw_token = secrets.token_urlsafe(32)
+    invite.token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    invite.expires_at = datetime.utcnow() + timedelta(hours=24)
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=g.current_user['sub'],
+        organization_id=org_id,
+        type=ActivityType.USER_INVITE_RESENT,
+        description=f'Org admin resent invitation to: {invite.email}',
+        metadata={'invite_id': str(invite.id)},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    return jsonify({
+        'invitation': invite.to_dict(include_token=True),
+        'invite_link': f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+    })
+
+
+@org_admin_bp.delete('/invitations/<invite_id>')
+@require_role('org_admin')
+def org_admin_cancel_invitation(invite_id):
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    invite = InviteToken.query.filter_by(id=invite_id, organization_id=org_id).first()
+    if not invite:
+        return jsonify({'error': 'Invitation not found'}), 404
+
+    if invite.accepted_at:
+        return jsonify({'error': 'Cannot cancel accepted invitation'}), 400
+
+    email = invite.email
+    db.session.delete(invite)
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=g.current_user['sub'],
+        organization_id=org_id,
+        type=ActivityType.USER_INVITE_CANCELLED,
+        description=f'Org admin cancelled invitation to: {email}',
+        metadata={'invite_id': invite_id},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    return jsonify({'message': 'Invitation cancelled'})
+
+
+@org_admin_bp.get('/license')
+@require_role('org_admin')
+def org_admin_get_license():
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
+
+    # Count current users
+    current_users = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.role == UserRole.USER
+    ).count()
+
+    # Count scans this month
+    start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    scans_this_month = Scan.query.filter(
+        Scan.organization_id == org_id,
+        Scan.created_at >= start_of_month
+    ).count()
+
+    return jsonify({
+        'license': {
+            'plan_name': org.plan_name,
+            'plan_status': org.plan_status,
+            'max_users': org.max_users,
+            'users_used': current_users,
+            'users_remaining': max(0, org.max_users - current_users),
+            'scans_per_month': org.scans_per_month,
+            'scans_used': scans_this_month,
+            'scans_remaining': max(0, org.scans_per_month - scans_this_month),
+            'license_expiry': org.license_expiry.isoformat() if org.license_expiry else None,
+            'is_expired': org.license_expiry and org.license_expiry < datetime.utcnow(),
         }
     })

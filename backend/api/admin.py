@@ -309,6 +309,82 @@ def admin_update_organization(org_id):
     return jsonify({'organization': org.to_dict(include_sensitive=True)})
 
 
+@admin_bp.patch('/organizations/<org_id>/license')
+@require_role('super_admin')
+def admin_update_organization_license(org_id):
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+
+    if 'plan_name' in data:
+        if data['plan_name'] not in ['starter', 'business', 'enterprise', None, '']:
+            return jsonify({'error': 'Invalid plan name'}), 400
+        org.plan_name = data['plan_name'] or None
+
+    if 'plan_status' in data:
+        if data['plan_status'] not in ['active', 'suspended', 'expired']:
+            return jsonify({'error': 'Invalid plan status'}), 400
+        old_status = org.plan_status
+        org.plan_status = data['plan_status']
+        if old_status != org.plan_status:
+            db.session.add(ActivityLog(
+                user_id=g.current_user['sub'],
+                organization_id=org.id,
+                type=ActivityType.LICENSE_SUSPENDED if org.plan_status == 'suspended' else ActivityType.LICENSE_REACTIVATED,
+                description=f'License {org.plan_status}',
+                metadata={'org_id': str(org.id), 'old_status': old_status, 'new_status': org.plan_status},
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            ))
+
+    if 'max_users' in data:
+        try:
+            max_users = int(data['max_users'])
+            if max_users < 1:
+                return jsonify({'error': 'Max users must be at least 1'}), 400
+            org.max_users = max_users
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid max_users value'}), 400
+
+    if 'scans_per_month' in data:
+        try:
+            org.scans_per_month = int(data['scans_per_month'])
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid scans_per_month value'}), 400
+
+    if 'monthly_scan_limit' in data:
+        try:
+            org.monthly_scan_limit = int(data['monthly_scan_limit'])
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid monthly_scan_limit value'}), 400
+
+    if 'license_expiry' in data:
+        if data['license_expiry']:
+            try:
+                org.license_expiry = datetime.fromisoformat(data['license_expiry'].replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Invalid license_expiry format. Use ISO 8601.'}), 400
+        else:
+            org.license_expiry = None
+
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=g.current_user['sub'],
+        organization_id=org.id,
+        type=ActivityType.LICENSE_UPDATED,
+        description=f'Admin updated license for organization: {org.name}',
+        metadata={'org_id': str(org.id), 'changes': data},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    return jsonify({'organization': org.to_dict(include_sensitive=True)})
+
+
 @admin_bp.delete('/organizations/<org_id>')
 @require_role('super_admin')
 def admin_delete_organization(org_id):
