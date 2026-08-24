@@ -11,7 +11,7 @@ import numpy as np
 
 from backend.config import config
 from backend.models import db, User, Organization, Membership, Scan, ActivityLog, OrganizationAuthConfig
-from backend.api.auth import init_oauth
+
 from backend.features_from_url import extract_features_from_url, generate_reasons
 from backend.threat_api import check_openphish_sync
 from backend.page_inspect import inspect_page_sync
@@ -72,7 +72,7 @@ def create_app(config_name=None):
     db.init_app(app)
     Migrate(app, db)
 
-    init_oauth(app)
+    
 
     from backend.api.auth import auth_bp
     from backend.api.users import users_bp

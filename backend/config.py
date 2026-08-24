@@ -34,6 +34,11 @@ class Config:
 
     BREAKGLASS_KEY = os.environ.get('BREAKGLASS_KEY')
 
+    # Microsoft Entra Security Group Object IDs for RBAC
+    SUPER_ADMIN_GROUP_ID = os.environ.get('SUPER_ADMIN_GROUP_ID')
+    ORG_ADMIN_GROUP_ID = os.environ.get('ORG_ADMIN_GROUP_ID')
+    USER_GROUP_ID = os.environ.get('USER_GROUP_ID')
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

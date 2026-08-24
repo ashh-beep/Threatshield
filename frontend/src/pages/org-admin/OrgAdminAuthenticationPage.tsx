@@ -15,10 +15,26 @@ export function OrgAdminAuthenticationPage() {
   const [showSecret, setShowSecret] = useState(false);
   const [newSecret, setNewSecret] = useState('');
 
+  // Pre-filled Microsoft Entra ID credentials
+  const DEFAULT_TENANT_ID = '9e538254-9fc8-4c58-8017-eda881f4d21f';
+  const DEFAULT_CLIENT_ID = 'e72b3e1b-baa8-4164-99b1-f1b5e7c01eeb';
+
   const fetchConfig = async () => {
     try {
       const response = await api.orgAdminGetAuthConfig();
-      setConfig(response.auth_config);
+      const authConfig = response.auth_config;
+      
+      // Pre-fill Microsoft credentials if not already configured
+      if (authConfig.sso_provider === 'microsoft' || !authConfig.sso_provider) {
+        if (!authConfig.sso_tenant_id) {
+          authConfig.sso_tenant_id = DEFAULT_TENANT_ID;
+        }
+        if (!authConfig.sso_client_id) {
+          authConfig.sso_client_id = DEFAULT_CLIENT_ID;
+        }
+      }
+      
+      setConfig(authConfig);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load authentication config');
     } finally {
