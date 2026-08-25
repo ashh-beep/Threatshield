@@ -37,6 +37,8 @@ export function OrgAdminUsersPage() {
   });
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [createdInviteUrl, setCreatedInviteUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [invitations, setInvitations] = useState<any[]>([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
   const [licenseInfo, setLicenseInfo] = useState<any>(null);
@@ -114,7 +116,10 @@ export function OrgAdminUsersPage() {
         first_name: inviteData.first_name.trim(),
         last_name: inviteData.last_name.trim(),
       });
-      setInviteSuccess('Invitation sent successfully');
+      if (response && response.invite_url) {
+        setCreatedInviteUrl(response.invite_url);
+      }
+      setInviteSuccess('Invitation created successfully!');
       setInviteData({ email: '', first_name: '', last_name: '' });
       fetchInvitations();
     } catch (err: any) {
@@ -310,9 +315,14 @@ export function OrgAdminUsersPage() {
                 Manage organization users
               </p>
             </div>
-            <Button variant="primary" onClick={() => setShowInviteModal(true)} disabled={licenseInfo?.users_remaining === 0}>
-              Invite User
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={() => { setCreatedInviteUrl(null); setInviteSuccess(null); setInviteError(null); setShowInviteModal(true); }} disabled={licenseInfo?.users_remaining === 0}>
+                Invite User
+              </Button>
+              <Button variant="outline" onClick={() => { setFormError(null); setShowCreateModal(true); }} disabled={licenseInfo?.users_remaining === 0}>
+                + Create User Directly
+              </Button>
+            </div>
           </div>
 
           {/* License Usage Card */}
@@ -473,6 +483,19 @@ export function OrgAdminUsersPage() {
                             </td>
                             <td className="px-4 py-4 text-right">
                               <div className="flex items-center justify-end gap-2">
+                                {!inv.accepted_at && !inv.is_expired && inv.token && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const url = `${window.location.origin}/invite/${inv.token}`;
+                                      navigator.clipboard.writeText(url);
+                                      alert(`Copied invitation link:\n${url}`);
+                                    }}
+                                  >
+                                    Copy Link
+                                  </Button>
+                                )}
                                 {!inv.accepted_at && !inv.is_expired && (
                                   <Button variant="outline" size="sm" onClick={() => handleResendInvitation(inv.id)}>Resend</Button>
                                 )}

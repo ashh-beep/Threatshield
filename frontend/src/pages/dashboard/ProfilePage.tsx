@@ -344,7 +344,7 @@ export function ProfilePage() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">Gatekeeper Extension</h3>
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100">ThreatShield Extension</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Real-time URL protection in your browser</p>
                   </div>
                 </div>
@@ -356,7 +356,7 @@ export function ProfilePage() {
               {!extensionLinked ? (
                 <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Link the Gatekeeper browser extension to your account to enable real-time URL scanning and protection while you browse.
+                    Link the ThreatShield browser extension to your account to enable real-time URL scanning and protection while you browse.
                   </p>
                   <Button variant="primary" onClick={handleLinkExtension} loading={isLoading}>
                     Link Extension

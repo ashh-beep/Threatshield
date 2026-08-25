@@ -105,14 +105,14 @@ export function DashboardPage() {
           verdict: scanResult.verdict,
           risk_score: scanResult.riskScore,
           risk_color: scanResult.verdict === 'safe' ? 'green' : scanResult.verdict === 'suspicious' ? 'yellow' : 'red',
-          phishing_probability: scanResult.threatIntelligence?.found ? 0.9 : 0.5,
+          phishing_probability: scanResult.riskScore / 100,
           prediction: scanResult.verdict === 'safe' ? -1 : 1,
           reasons: scanResult.reasons || [],
           stages: {
             lexical: {
               verdict: scanResult.verdict,
               risk_score: scanResult.riskScore,
-              phishing_probability: scanResult.threatIntelligence?.found ? 0.9 : 0.5,
+              phishing_probability: scanResult.riskScore / 100,
               reasons: scanResult.reasons || [],
               latency_ms: 0
             },

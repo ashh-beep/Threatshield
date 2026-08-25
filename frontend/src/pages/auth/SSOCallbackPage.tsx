@@ -28,30 +28,20 @@ export function SSOCallbackPage() {
 
       if (accessToken && refreshToken) {
         try {
-          // Store tokens
-          localStorage.setItem('access_token', accessToken);
-          localStorage.setItem('refresh_token', refreshToken);
+          // Store tokens using API service to update in-memory state & localStorage
+          api.saveTokens(accessToken, refreshToken);
           
-          // Fetch user info to get role and redirect accordingly
-          await refreshUser();
-          
-          // Redirect based on role
-          setTimeout(() => {
-            if (user) {
-              switch (user.role) {
-                case 'super_admin':
-                  navigate('/threatshield-admin');
-                  break;
-                case 'org_admin':
-                  navigate('/org-admin');
-                  break;
-                default:
-                  navigate('/dashboard');
-              }
-            } else {
-              navigate('/dashboard');
-            }
-          }, 100);
+          // Fetch user info to get role and update auth state
+          const fetchedUser = await refreshUser();
+          const role = fetchedUser?.role;
+
+          if (role === 'super_admin') {
+            navigate('/threatshield-admin', { replace: true });
+          } else if (role === 'org_admin') {
+            navigate('/org-admin', { replace: true });
+          } else {
+            navigate('/dashboard', { replace: true });
+          }
         } catch {
           setError('SSO authentication failed. Please try again.');
           setShowError(true);
@@ -60,31 +50,23 @@ export function SSOCallbackPage() {
       }
 
       // Fallback: listen for postMessage (popup flow)
-      const handleMessage = (event: MessageEvent) => {
+      const handleMessage = async (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
 
         if (event.data.type === 'GATEKEEPER_SSO_SUCCESS') {
           const { accessToken, refreshToken } = event.data;
           try {
-            localStorage.setItem('access_token', accessToken);
-            localStorage.setItem('refresh_token', refreshToken);
-            refreshUser();
-            setTimeout(() => {
-              if (user) {
-                switch (user.role) {
-                  case 'super_admin':
-                    navigate('/threatshield-admin');
-                    break;
-                  case 'org_admin':
-                    navigate('/org-admin');
-                    break;
-                  default:
-                    navigate('/dashboard');
-                }
-              } else {
-                navigate('/dashboard');
-              }
-            }, 100);
+            api.saveTokens(accessToken, refreshToken);
+            const fetchedUser = await refreshUser();
+            const role = fetchedUser?.role;
+
+            if (role === 'super_admin') {
+              navigate('/threatshield-admin', { replace: true });
+            } else if (role === 'org_admin') {
+              navigate('/org-admin', { replace: true });
+            } else {
+              navigate('/dashboard', { replace: true });
+            }
           } catch {
             setError('SSO authentication failed. Please try again.');
             setShowError(true);

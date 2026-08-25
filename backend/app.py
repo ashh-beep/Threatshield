@@ -28,22 +28,17 @@ _store_lock = threading.Lock()
 
 
 def _compute_risk_score(proba_phish: float) -> int:
+    """Compute risk score as an exact 0-100 percentage based on phishing probability."""
     p = float(proba_phish)
-    if p <= 0.2:
-        score = 1 + int(round((p / 0.2) * 2))
-    elif p <= 0.5:
-        score = 4 + int(round(((p - 0.2) / 0.3) * 2))
-    else:
-        score = 7 + int(round(((p - 0.5) / 0.5) * 3))
-    return max(1, min(10, score))
+    return max(1, min(99, int(round(p * 100))))
 
 
 def _determine_verdict(pred, proba_phish, in_openphish):
     if in_openphish:
         return "Dangerous", "red"
-    if pred == 1 and proba_phish >= 0.70:
+    if pred == 1 or proba_phish >= 0.70:
         return "Dangerous", "red"
-    if pred == 1 and proba_phish >= 0.50:
+    if proba_phish >= 0.40:
         return "Suspicious", "yellow"
     return "Safe", "green"
 
@@ -127,6 +122,14 @@ def create_app(config_name=None):
 
             risk_score = _compute_risk_score(proba_phish)
             reasons = generate_reasons(url, features)
+
+            # Check if brand digit substitution was detected in reasons (e.g., g00gle, paypa1, app1e)
+            has_digit_sub = any("Digit substitution" in r for r in reasons)
+            if has_digit_sub:
+                proba_phish = max(proba_phish, 0.88)
+                pred = 1
+                risk_score = _compute_risk_score(proba_phish)
+
             lexical_latency_ms = round((time.time() - t0) * 1000)
 
             lexical_stage = {
@@ -154,7 +157,7 @@ def create_app(config_name=None):
                 pred, proba_phish, threat_result.get("in_openphish", False)
             )
             if threat_result.get("in_openphish", False):
-                risk_score = 10
+                risk_score = 99
 
             with _store_lock:
                 cached = _page_inspect_store.get(url)

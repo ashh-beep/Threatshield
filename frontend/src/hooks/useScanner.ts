@@ -1,9 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ScannerState, ScanResult } from '@type-defs/scanner';
 import { scannerService } from '@services/scannerService';
-import { mockScannerService } from '@services/mockScannerService';
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || !import.meta.env.VITE_API_BASE_URL;
 
 export function useScanner() {
   const [state, setState] = useState<ScannerState>({
@@ -34,10 +31,8 @@ export function useScanner() {
       error: null,
     }));
 
-    const service = USE_MOCK ? mockScannerService : scannerService;
-
     try {
-      const result = await service.scanUrl({ url });
+      const result = await scannerService.scanUrl({ url });
 
       setState({
         state: 'success',
@@ -70,9 +65,7 @@ export function useScanner() {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    if (!USE_MOCK) {
-      scannerService.cancel();
-    }
+    scannerService.cancel();
     setState(prev => ({
       ...prev,
       state: 'idle',
@@ -85,9 +78,7 @@ export function useScanner() {
       if (abortRef.current) {
         abortRef.current.abort();
       }
-      if (!USE_MOCK) {
-        scannerService.cancel();
-      }
+      scannerService.cancel();
     };
   }, []);
 

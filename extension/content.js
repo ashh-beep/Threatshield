@@ -260,7 +260,7 @@
       <div class="gk-toast-inner">
         <span class="gk-toast-icon">✅</span>
         <div class="gk-toast-body">
-          <div class="gk-toast-title">Gatekeeper — Safe${score !== null ? ` (${score}/10)` : ""}</div>
+          <div class="gk-toast-title">ThreatShield — Safe${score !== null ? ` (${score}/10)` : ""}</div>
           <div class="gk-toast-sub">${esc(url.substring(0, 55))}${url.length > 55 ? "…" : ""}</div>
         </div>
         <button class="gk-toast-close" id="gk-toast-x">✕</button>
@@ -282,7 +282,7 @@
       <div class="gk-banner-inner">
         <span class="gk-banner-icon">⚠️</span>
         <div class="gk-banner-text">
-          <div class="gk-banner-title">Gatekeeper — Suspicious Link (Risk ${score !== null ? score : "?"}/10)</div>
+          <div class="gk-banner-title">ThreatShield — Suspicious Link (Risk ${score !== null ? score : "?"}/10)</div>
           <div class="gk-banner-sub">
             ${reasons.length > 0
               ? esc(reasons[0])
@@ -334,7 +334,7 @@
         <div class="gk-overlay-url">${esc(url)}</div>
         ${reasons.length > 0 ? `
           <div class="gk-overlay-reasons">
-            <div class="gk-overlay-reasons-title">Why Gatekeeper flagged this</div>
+            <div class="gk-overlay-reasons-title">Why ThreatShield flagged this</div>
             ${reasonsHtml}
           </div>
         ` : ""}
@@ -352,7 +352,7 @@
       el.remove();
     });
     el.querySelector("#gk-proceed").addEventListener("click", () => {
-      if (confirm("⚠ Gatekeeper has detected this as a phishing site. Are you absolutely sure you want to continue?")) {
+      if (confirm("⚠ ThreatShield has detected this as a phishing site. Are you absolutely sure you want to continue?")) {
         el.remove();
       }
     });

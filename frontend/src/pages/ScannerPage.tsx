@@ -48,7 +48,7 @@ export function ScannerPage() {
             </svg>
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-            Gatekeeper
+            ThreatShield
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
             Advanced URL security scanner. Detect phishing, malware, and suspicious links before you click.
@@ -142,7 +142,7 @@ export function ScannerPage() {
         </main>
 
         <footer className="mt-12 text-center text-sm text-gray-500 dark:text-gray-400">
-          <p>Gatekeeper - Protecting you from phishing and malicious URLs</p>
+          <p>ThreatShield - Protecting you from phishing and malicious URLs</p>
         </footer>
       </div>
 

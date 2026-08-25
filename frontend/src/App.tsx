@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Navbar } from '@components/layout/Navbar';
 import { Footer } from '@components/layout/Footer';
 import { ThreatShieldAdminLayout } from '@components/layout/ThreatShieldAdminLayout';
@@ -27,11 +27,15 @@ import { SuperAdminProvisioningPage } from '@pages/super-admin/SuperAdminProvisi
 import { SuperAdminActivityPage } from '@pages/super-admin/SuperAdminActivityPage';
 import { SuperAdminSettingsPage } from '@pages/super-admin/SuperAdminSettingsPage';
 import { SSOCallbackPage } from '@pages/auth/SSOCallbackPage';
+import { AcceptInvitePage } from '@pages/auth/AcceptInvitePage';
 
 const sections = ['home', 'how-it-works', 'detection', 'security', 'about'] as const;
 type Section = typeof sections[number];
 
 function App() {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/org-admin') || location.pathname.startsWith('/threatshield-admin');
+
   const [currentSection, setCurrentSection] = useState<Section>('home');
   const [showScanner, setShowScanner] = useState(false);
 
@@ -71,9 +75,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Navbar currentSection={currentSection} onNavigate={scrollToSection} />
+      {!isAdminRoute && <Navbar currentSection={currentSection} onNavigate={scrollToSection} />}
       
-      <main id="main-content" className="pt-16" role="main">
+      <main id="main-content" className={isAdminRoute ? '' : 'pt-16'} role="main">
         <Routes>
           {/* Public routes */}
           <Route
@@ -93,6 +97,7 @@ function App() {
             }
           />
           <Route path="/auth/sso/callback" element={<SSOCallbackPage />} />
+          <Route path="/invite/:token" element={<AcceptInvitePage />} />
           
           {/* Public landing page with scanner */}
           <Route
@@ -258,7 +263,7 @@ function App() {
         </Routes>
       </main>
 
-      <Footer />
+      {!isAdminRoute && <Footer />}
     </div>
   );
 }

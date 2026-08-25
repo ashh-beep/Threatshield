@@ -1,6 +1,6 @@
 import type { ScanRequest, ScanResult, ApiError } from '../types/scanner';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
 
 interface AnalyzeResponse {
@@ -110,7 +110,10 @@ class ScannerService {
     const pageInspectData = pageInspectResponse.status === 'fulfilled' ? pageInspectResponse.value : null;
 
     if (!analyzeData) {
-      throw { message: 'Failed to analyze URL', code: 'ANALYZE_FAILED' } as ApiError;
+      const reason = analyzeResponse.status === 'rejected' ? analyzeResponse.reason : null;
+      console.error('Analyze request failed:', reason);
+      const message = typeof reason === 'object' && reason?.message ? reason.message : 'Unable to complete the scan. Please try again.';
+      throw { message, code: 'ANALYZE_FAILED' } as ApiError;
     }
 
     // Build summary from verdict and reasons

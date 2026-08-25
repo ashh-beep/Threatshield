@@ -227,7 +227,7 @@ export function OrgAdminSSOPage() {
                   <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">1. Register an Application in Azure Portal</h4>
                   <ol className="list-decimal list-inside space-y-1">
                     <li>Go to <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Azure Portal</a> → Microsoft Entra ID → App registrations</li>
-                    <li>Click "New registration" and enter a name (e.g., "Gatekeeper SSO")</li>
+                    <li>Click "New registration" and enter a name (e.g., "ThreatShield SSO")</li>
                     <li>Select "Accounts in any organizational directory" for multi-tenant</li>
                     <li>Set Redirect URI to <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{window.location.origin}/auth/sso/callback</code></li>
                   </ol>

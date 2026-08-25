@@ -1,19 +1,19 @@
 export function isValidUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  if (trimmed.match(/^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/.*)?$/i)) {
+    return true;
+  }
   try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    const parsed = new URL(trimmed.includes('://') ? trimmed : `http://${trimmed}`);
+    return Boolean(parsed.hostname);
   } catch {
     return false;
   }
 }
 
 export function normalizeUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  if (!trimmed.match(/^https?:\/\//i)) {
-    return `https://${trimmed}`;
-  }
-  return trimmed;
+  return url.trim();
 }
 
 export function getVerdictColor(verdict: 'safe' | 'suspicious' | 'dangerous'): string {

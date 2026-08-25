@@ -7,9 +7,10 @@ import secrets
 from backend.models import (
     db, User, UserRole, Organization, OrganizationStatus, 
     Membership, MembershipRole, ActivityLog, ActivityType,
-    OrganizationAuthConfig, InviteToken
+    OrganizationAuthConfig, InviteToken, Scan
 )
 from backend.auth_utils import require_auth, require_role, get_current_user
+from backend.email_service import send_invitation_email
 
 org_admin_bp = Blueprint('org_admin', __name__, url_prefix='/api/org-admin')
 
@@ -693,13 +694,19 @@ def org_admin_invite_user():
             # Expired - create new invite
             current_app.logger.info(f"Invite reuse: Expired invitation {existing_invite.id} for {email} in org {org_id}, creating new")
         else:
-            # Pending and unexpired - return 409
-            current_app.logger.warning(f"Invite conflict: Pending invitation {existing_invite.id} exists for {email} in org {org_id}")
-            return jsonify({'error': 'Pending invitation already exists'}), 409
-
-        # Invalidate old invitation (expired or accepted)
-        db.session.delete(existing_invite)
-        db.session.commit()
+            # Pending and unexpired - renew token and return new invite URL
+            raw_token = secrets.token_urlsafe(32)
+            existing_invite.token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+            existing_invite.expires_at = datetime.utcnow() + timedelta(hours=24)
+            db.session.commit()
+            invite_url = f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+            send_invitation_email(existing_invite.email, existing_invite.first_name or '', invite_url)
+            return jsonify({
+                'message': 'Invitation renewed and passkey created',
+                'invite_url': invite_url,
+                'raw_token': raw_token,
+                'expires_at': existing_invite.expires_at.isoformat()
+            }), 200
 
     # Generate secure token
     raw_token = secrets.token_urlsafe(32)
@@ -730,6 +737,7 @@ def org_admin_invite_user():
     db.session.commit()
 
     invite_url = f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+    send_invitation_email(email, first_name or '', invite_url)
     return jsonify({
         'message': 'Invitation created',
         'invite_url': invite_url,
@@ -768,9 +776,12 @@ def org_admin_resend_invitation(invite_id):
     ))
     db.session.commit()
 
+    invite_url = f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+    send_invitation_email(invite.email, invite.first_name or '', invite_url)
+
     return jsonify({
         'invitation': invite.to_dict(include_token=True),
-        'invite_link': f"{current_app.config.get('FRONTEND_URL', '')}/invite/{raw_token}"
+        'invite_link': invite_url
     })
 
 

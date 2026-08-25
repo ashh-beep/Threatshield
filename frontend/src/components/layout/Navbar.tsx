@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@components/ui/Button';
 import { Badge } from '@components/ui/Badge';
 import { classNames } from '@utils/helpers';
@@ -26,6 +26,21 @@ export function Navbar({ currentSection, onNavigate }: NavbarProps) {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, isSuperAdmin, isOrgAdmin, user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleNewScanClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (location.pathname === '/dashboard') {
+      const input = (document.getElementById('url-scanner-input') || document.querySelector('input[type="url"]') || document.querySelector('input[placeholder*="http"]')) as HTMLInputElement | null;
+      if (input) {
+        input.focus();
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      navigate('/dashboard', { state: { newScan: true }, replace: true });
+    } else {
+      navigate('/dashboard', { state: { newScan: true } });
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -91,13 +106,13 @@ export function Navbar({ currentSection, onNavigate }: NavbarProps) {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-2" aria-label="Gatekeeper">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center" aria-hidden="true">
+          <div className="flex items-center gap-2 shrink-0" aria-label="ThreatShield">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0" aria-hidden="true">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
-            <span className="font-bold text-xl text-gray-900 dark:text-gray-100">Gatekeeper</span>
+            <span className="font-bold text-xl text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0">ThreatShield</span>
           </div>
 
           <div className="hidden md:flex items-center gap-6">
@@ -141,11 +156,9 @@ export function Navbar({ currentSection, onNavigate }: NavbarProps) {
                     Dashboard
                   </Button>
                 </Link>
-                <Link to="/dashboard" className="hidden sm:inline-flex">
-                  <Button variant="outline" size="sm">
-                    New Scan
-                  </Button>
-                </Link>
+                <Button variant="outline" size="sm" onClick={handleNewScanClick} className="hidden sm:inline-flex">
+                  New Scan
+                </Button>
                 {/* User Menu */}
                 <div className="relative" ref={userMenuRef}>
                   <button

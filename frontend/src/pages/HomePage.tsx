@@ -206,7 +206,7 @@ export function HomePage({ onNavigate }: { onNavigate: (section: string) => void
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 id="about-heading" className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-              About Gatekeeper
+              About ThreatShield
             </h2>
             <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Our mission is to make the web safer for everyone
@@ -216,7 +216,7 @@ export function HomePage({ onNavigate }: { onNavigate: (section: string) => void
           <div className="max-w-3xl mx-auto text-center">
             <div className="prose dark:prose-invert mx-auto text-left">
               <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Gatekeeper was built to address the growing sophistication of phishing attacks and malicious URLs.
+                ThreatShield was built to address the growing sophistication of phishing attacks and malicious URLs.
                 Traditional URL filtering relies on blocklists that are always one step behind attackers.
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
@@ -225,13 +225,13 @@ export function HomePage({ onNavigate }: { onNavigate: (section: string) => void
                 intelligence feeds and dynamic page inspection that actually visits and analyzes the target page.
               </p>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
-                We believe security tools should be transparent. When Gatekeeper flags a URL, it shows you exactly why:
+                We believe security tools should be transparent. When ThreatShield flags a URL, it shows you exactly why:
                 the specific indicators detected, the threat intelligence sources consulted, and the page behaviors observed.
                 This helps users make informed decisions and builds trust in the system.
               </p>
               <p className="text-gray-600 dark:text-gray-400">
                 Whether you're a security professional investigating suspicious links or an everyday user checking
-                a link before clicking, Gatekeeper provides the analysis you need to stay safe online.
+                a link before clicking, ThreatShield provides the analysis you need to stay safe online.
               </p>
             </div>
           </div>

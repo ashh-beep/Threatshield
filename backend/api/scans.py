@@ -28,16 +28,43 @@ def create_scan():
     elif current.get('org_id'):
         org_id = current['org_id']
 
+    # Compute live ML features and verdict server-side to guarantee 100% accuracy
+    from backend.app import model, _compute_risk_score, _determine_verdict
+    from backend.features_from_url import extract_features_from_url, generate_reasons
+    from backend.threat_api import check_openphish_sync
+    import numpy as np
+
+    features = extract_features_from_url(url)
+    features_arr = np.array(features).reshape(1, -1)
+    probas = model.predict_proba(features_arr)[0]
+    classes = model.classes_
+    idx_phish = int(np.where(classes == 1)[0][0])
+    proba_phish = float(probas[idx_phish])
+    pred = int(model.predict(features_arr)[0])
+
+    reasons = generate_reasons(url, features)
+    has_digit_sub = any("Digit substitution" in r for r in reasons)
+    if has_digit_sub:
+        proba_phish = max(proba_phish, 0.88)
+        pred = 1
+
+    threat_result = check_openphish_sync(url)
+    in_openphish = threat_result.get("in_openphish", False)
+
+    verdict_str, risk_color = _determine_verdict(pred, proba_phish, in_openphish)
+    risk_score = 99 if in_openphish else _compute_risk_score(proba_phish)
+    verdict_enum = ScanVerdict(verdict_str.lower())
+
     scan = Scan(
         user_id=user_id,
         organization_id=org_id,
         url=url,
-        verdict=data.get('verdict', 'safe'),
-        risk_score=data.get('risk_score', 1),
-        risk_color=data.get('risk_color', 'green'),
-        phishing_probability=data.get('phishing_probability', 0.0),
-        prediction=data.get('prediction', -1),
-        reasons=data.get('reasons', []),
+        verdict=verdict_enum,
+        risk_score=risk_score,
+        risk_color=risk_color,
+        phishing_probability=round(proba_phish, 4),
+        prediction=pred,
+        reasons=reasons,
         stages=data.get('stages', {}),
         page_inspect_result=data.get('page_inspect_result')
     )

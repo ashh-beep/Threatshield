@@ -1,6 +1,6 @@
 import type { ScanRequest, ScanResult, ApiError } from '../types/scanner';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
 
 export interface AnalyzeResponse {
@@ -162,7 +162,7 @@ class ApiService {
     }
   }
 
-  private saveTokens(accessToken: string, refreshToken: string) {
+  saveTokens(accessToken: string, refreshToken: string) {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
     try {
@@ -849,6 +849,27 @@ class ApiService {
     }
   }> {
     return this.request('/org-admin/license', {}, true);
+  }
+
+  async validateInviteToken(token: string): Promise<{
+    email: string;
+    first_name: string;
+    last_name: string;
+    organization_name: string;
+    expires_at: string;
+  }> {
+    return this.request(`/auth/invite/${token}`, { method: 'GET' }, false);
+  }
+
+  async acceptInviteToken(token: string, data: { password?: string; first_name?: string; last_name?: string }): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>(`/auth/invite/${token}/accept`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, false);
+    if (response.access_token && response.refresh_token) {
+      this.saveTokens(response.access_token, response.refresh_token);
+    }
+    return response;
   }
 }
 

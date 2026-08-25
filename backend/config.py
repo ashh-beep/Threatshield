@@ -1,5 +1,8 @@
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Config:
@@ -19,7 +22,7 @@ class Config:
 
     MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID')
     MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET')
-    MICROSOFT_TENANT_ID = os.environ.get('MICROSOFT_TENANT_ID', 'common')
+    MICROSOFT_TENANT_ID = os.environ.get('MICROSOFT_TENANT_ID', '9e538254-9fc8-4c58-8017-eda881f4d21f')
     MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:3000/auth/callback/microsoft')
 
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
@@ -30,7 +33,7 @@ class Config:
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@gatekeeper.local')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@threatshield.local')
 
     BREAKGLASS_KEY = os.environ.get('BREAKGLASS_KEY')
 
