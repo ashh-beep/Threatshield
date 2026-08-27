@@ -4,6 +4,7 @@ import { Button } from '@components/ui/Button';
 import { Badge } from '@components/ui/Badge';
 import { useAuth } from '@context/AuthContext';
 import { api } from '@services/api';
+import { RiskScoreBypassSection } from '@components/settings/RiskScoreBypassSection';
 
 export function OrgAdminSettingsPage() {
   const { user } = useAuth();
@@ -178,6 +179,11 @@ export function OrgAdminSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Risk Score Bypass Configuration */}
+          <div className="lg:col-span-2">
+            <RiskScoreBypassSection isSuperAdmin={false} />
+          </div>
 
           <Card variant="outlined" className="border-gray-200 dark:border-gray-700 lg:col-span-2">
             <CardHeader>

@@ -6,6 +6,8 @@ from backend.auth_utils import require_auth, require_role, get_current_user
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
+super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/api/super-admin')
+
 
 @admin_bp.get('/dashboard')
 @require_role('super_admin')
@@ -168,6 +170,46 @@ def admin_update_user(user_id):
         user_agent=request.headers.get('User-Agent')
     ))
     db.session.commit()
+
+    return jsonify({'user': user.to_dict(include_sensitive=True)})
+
+
+@super_admin_bp.get('/admins/<admin_id>')
+@require_role('super_admin')
+def super_admin_get_admin(admin_id):
+    """Get a specific organization admin by ID with organization details."""
+    user = (
+        User.query.filter_by(id=admin_id, role=UserRole.ORG_ADMIN)
+        .options(
+            db.joinedload(User.memberships).joinedload(Membership.organization)
+        )
+        .first()
+    )
+    if not user:
+        return jsonify({'error': 'Organization admin not found'}), 404
+
+    data = user.to_dict(include_sensitive=True)
+    
+    # Add primary organization directly for convenience
+    primary_membership = user.memberships[0] if user.memberships else None
+    if primary_membership and primary_membership.organization:
+        data['organization'] = {
+            'id': str(primary_membership.organization.id),
+            'name': primary_membership.organization.name,
+            'slug': primary_membership.organization.slug,
+        }
+    else:
+        data['organization'] = None
+
+    return jsonify({'admin': data})
+
+
+@admin_bp.get('/users/<user_id>')
+@require_role('super_admin')
+def admin_get_user(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
 
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 

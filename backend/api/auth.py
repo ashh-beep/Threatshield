@@ -778,22 +778,25 @@ def accept_invite_token(token):
     from backend.auth_utils import hash_password
 
     user = User.query.filter_by(email=invite.email).first()
+
+    # Check license limits before creating or activating user
+    active_users = User.query.join(Membership).filter(
+        Membership.organization_id == org.id,
+        User.role == UserRole.USER,
+        User.is_active == True
+    ).count()
+
+    if (not user or not user.is_active) and active_users >= org.max_users:
+        return jsonify({'error': 'License seat limit reached'}), 403
+
     if user:
         if not user.password_hash:
             user.password_hash = hash_password(password)
         user.is_active = True
         user.is_verified = True
         user.is_provisioned = True
+        user.deprovisioned_at = None
     else:
-        # Check license limits for new users
-        current_users = User.query.join(Membership).filter(
-            Membership.organization_id == org.id,
-            User.role == UserRole.USER
-        ).count()
-        
-        if current_users >= org.max_users:
-            return jsonify({'error': 'License limit reached for this organization'}), 403
-
         user = User(
             email=invite.email,
             password_hash=hash_password(password),
@@ -803,6 +806,7 @@ def accept_invite_token(token):
             is_active=True,
             is_verified=True,
             is_provisioned=True,
+            deprovisioned_at=None,
             auth_method='password'
         )
         db.session.add(user)
@@ -827,7 +831,7 @@ def accept_invite_token(token):
         organization_id=org.id,
         type=ActivityType.USER_INVITE_ACCEPTED,
         description=f'User accepted invitation: {invite.email}',
-        metadata={'invite_id': str(invite.id)},
+        activity_metadata={'invite_id': str(invite.id), 'email': invite.email},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))

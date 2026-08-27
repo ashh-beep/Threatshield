@@ -108,8 +108,17 @@ async function ensureContentScript(tabId, maxRetries = 8) {
 async function sendResult(tabId, url, out) {
   const reportUrl = `${WEBAPP_BASE}/?url=${encodeURIComponent(url)}`;
 
-  const verdict = out?.verdict || "Unknown";
-  const score = out?.risk_score ?? null;
+  const rawVerdict = (out?.verdict || "Safe").toLowerCase();
+  let verdict = "Safe";
+  if (rawVerdict === "dangerous" || rawVerdict === "phishing" || out?.prediction === 1) {
+    verdict = "Phishing";
+  } else if (rawVerdict === "suspicious") {
+    verdict = "Suspicious";
+  }
+
+  const rawScore = out?.risk_score ?? 1;
+  const riskScore10 = Math.min(10, Math.max(1, Math.ceil(rawScore / 10)));
+  const threshold = settings.risk_threshold || 7;
   const inOpenPhish = out?.stages?.threat_api?.in_openphish || false;
   const reasons = out?.reasons || [];
 
@@ -118,8 +127,10 @@ async function sendResult(tabId, url, out) {
     payload: {
       url,
       verdict,
-      score,
-      risk_color: out?.risk_color || "green",
+      score: riskScore10,
+      raw_score: rawScore,
+      threshold,
+      risk_color: out?.risk_color || (verdict === "Phishing" ? "red" : verdict === "Suspicious" ? "yellow" : "green"),
       in_openphish: inOpenPhish,
       reasons: reasons.slice(0, 4),
       reportUrl
@@ -192,6 +203,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.auto_scan_enabled !== undefined) {
       settings.auto_scan_enabled = message.auto_scan_enabled;
     }
+    if (message.risk_threshold !== undefined) {
+      settings.risk_threshold = message.risk_threshold;
+    }
     sendResponse({ ok: true });
     return true;
   }
@@ -220,11 +234,12 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
   }
 });
 
+// Real-time tab update listener: catches navigation as early as loading status
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status !== "complete") return;
-  if (!tab?.url) return;
-  if (settings.auto_scan_enabled) {
-    handleUrl(tabId, tab.url);
+  const targetUrl = changeInfo.url || tab?.url;
+  if (!targetUrl) return;
+  if (settings.auto_scan_enabled && (changeInfo.status === "loading" || changeInfo.status === "complete")) {
+    handleUrl(tabId, targetUrl);
   }
 });
 

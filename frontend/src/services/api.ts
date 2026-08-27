@@ -44,6 +44,9 @@ export interface User {
   role: 'user' | 'org_admin' | 'super_admin';
   is_active: boolean;
   is_verified: boolean;
+  is_provisioned?: boolean;
+  deprovisioned_at?: string | null;
+  auth_method?: string;
   last_login: string | null;
   created_at: string;
   extension_linked: boolean;
@@ -70,6 +73,16 @@ export interface Organization {
   sso_config?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  plan_name?: string;
+  plan_status?: string;
+  max_users?: number;
+  scans_per_month?: number;
+  monthly_scan_limit?: number;
+  license_expiry?: string | null;
+  users_used?: number;
+  users_remaining?: number;
+  scans_used?: number;
+  scans_remaining?: number;
 }
 
 export interface Scan {
@@ -118,6 +131,17 @@ export interface PaginatedResponseWithOrganizations {
   };
 }
 
+export interface PaginatedResponseWithUsers {
+  users: User[];
+  data?: User[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    pages: number;
+  };
+}
+
 export interface AuthResponse {
   user: User;
   access_token: string;
@@ -142,6 +166,38 @@ export interface ActivityLog {
   user_agent: string | null;
   created_at: string;
   user?: User;
+}
+
+export interface RiskScoreBypassRule {
+  id: string;
+  scope: 'global' | 'organization' | 'group' | 'user';
+  target_id: string | null;
+  target_name?: string;
+  organization_id: string | null;
+  max_allowed_risk_score: number;
+  description?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserGroupMember {
+  id: string;
+  group_id: string;
+  user_id: string;
+  created_at: string;
+  user?: User;
+}
+
+export interface UserGroup {
+  id: string;
+  organization_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  members?: UserGroupMember[];
 }
 
 class ApiService {
@@ -630,7 +686,7 @@ class ApiService {
     return this.request('/admin/dashboard', {}, true);
   }
 
-  async adminListUsers(params?: { page?: number; per_page?: number; search?: string; role?: string; is_active?: string }): Promise<PaginatedResponse<User>> {
+  async adminListUsers(params?: { page?: number; per_page?: number; search?: string; role?: string; is_active?: string }): Promise<PaginatedResponseWithUsers> {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
@@ -652,6 +708,14 @@ class ApiService {
       method: 'PATCH',
       body: JSON.stringify(data),
     }, true);
+  }
+
+  async adminGetUser(userId: string): Promise<{ user: User }> {
+    return this.request<{ user: User }>(`/admin/users/${userId}`, {}, true);
+  }
+
+  async superAdminGetAdmin(adminId: string): Promise<{ admin: User }> {
+    return this.request<{ admin: User }>(`/super-admin/admins/${adminId}`, {}, true);
   }
 
   async adminDeleteUser(userId: string): Promise<{ message: string }> {
@@ -725,7 +789,7 @@ class ApiService {
     return this.request('/org-admin/dashboard', {}, true);
   }
 
-  async orgAdminListUsers(params?: { page?: number; per_page?: number; search?: string; status?: string; auth_method?: string }): Promise<PaginatedResponse<User>> {
+  async orgAdminListUsers(params?: { page?: number; per_page?: number; search?: string; status?: string; auth_method?: string }): Promise<PaginatedResponseWithUsers> {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
@@ -754,11 +818,21 @@ class ApiService {
   }
 
   async orgAdminProvisionUser(userId: string): Promise<{ user: User }> {
-    return this.request<{ user: User }>(`/org-admin/users/${userId}/provision`, { method: 'POST' }, true);
+    return this.request<{ user: User }>(`/org-admin/users/${userId}/provision`, { method: 'PATCH' }, true);
   }
 
   async orgAdminDeprovisionUser(userId: string): Promise<{ user: User }> {
-    return this.request<{ user: User }>(`/org-admin/users/${userId}/deprovision`, { method: 'POST' }, true);
+    return this.request<{ user: User }>(`/org-admin/users/${userId}/deprovision`, {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    }, true);
+  }
+
+  async orgAdminReactivateUser(userId: string): Promise<{ user: User }> {
+    return this.request<{ user: User }>(`/org-admin/users/${userId}/reactivate`, {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    }, true);
   }
 
   async orgAdminProvisioning(params?: { page?: number; per_page?: number; status?: string }): Promise<PaginatedResponse<User>> {
@@ -800,11 +874,12 @@ class ApiService {
     }, true);
   }
 
-  async orgAdminActivity(params?: { page?: number; per_page?: number; search?: string }): Promise<PaginatedResponse<ActivityLog>> {
+  async orgAdminActivity(params?: { page?: number; per_page?: number; search?: string; user_id?: string }): Promise<PaginatedResponse<ActivityLog>> {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.user_id) searchParams.set('user_id', params.user_id);
     return this.request(`/org-admin/activity?${searchParams.toString()}`, {}, true);
   }
 
@@ -870,6 +945,71 @@ class ApiService {
       this.saveTokens(response.access_token, response.refresh_token);
     }
     return response;
+  }
+
+  // Risk Score Bypass Rules & User Groups endpoints
+  async getBypassRules(orgId?: string): Promise<{ rules: RiskScoreBypassRule[] }> {
+    const url = orgId ? `/bypass-rules?organization_id=${orgId}` : '/bypass-rules';
+    return this.request<{ rules: RiskScoreBypassRule[] }>(url, {}, true);
+  }
+
+  async createBypassRule(data: {
+    scope: 'global' | 'organization' | 'group' | 'user';
+    max_allowed_risk_score: number;
+    target_id?: string | null;
+    organization_id?: string | null;
+    description?: string;
+  }): Promise<{ rule: RiskScoreBypassRule }> {
+    return this.request<{ rule: RiskScoreBypassRule }>('/bypass-rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
+  async updateBypassRule(
+    ruleId: string,
+    data: { max_allowed_risk_score?: number; description?: string }
+  ): Promise<{ rule: RiskScoreBypassRule }> {
+    return this.request<{ rule: RiskScoreBypassRule }>(`/bypass-rules/${ruleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
+  async deleteBypassRule(ruleId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/bypass-rules/${ruleId}`, {
+      method: 'DELETE',
+    }, true);
+  }
+
+  async getUserGroups(orgId?: string): Promise<{ groups: UserGroup[] }> {
+    const url = orgId ? `/user-groups?organization_id=${orgId}` : '/user-groups';
+    return this.request<{ groups: UserGroup[] }>(url, {}, true);
+  }
+
+  async createUserGroup(data: {
+    name: string;
+    description?: string;
+    organization_id?: string;
+    user_ids?: string[];
+  }): Promise<{ group: UserGroup }> {
+    return this.request<{ group: UserGroup }>('/user-groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
+  async deleteUserGroup(groupId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/user-groups/${groupId}`, {
+      method: 'DELETE',
+    }, true);
+  }
+
+  async updateGroupMember(groupId: string, userId: string, action: 'add' | 'remove'): Promise<{ group: UserGroup }> {
+    return this.request<{ group: UserGroup }>(`/user-groups/${groupId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, action }),
+    }, true);
   }
 }
 

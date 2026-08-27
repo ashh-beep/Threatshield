@@ -190,6 +190,16 @@ def org_admin_create_user():
     if not org:
         return jsonify({'error': 'Organization not found'}), 404
 
+    # Check license seat limits (active USER members)
+    active_users = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.role == UserRole.USER,
+        User.is_active == True
+    ).count()
+
+    if active_users >= org.max_users:
+        return jsonify({'error': 'License seat limit reached'}), 403
+
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
     first_name = (data.get('first_name') or '').strip()
@@ -309,12 +319,17 @@ def org_admin_update_user(user_id):
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 
 
+@org_admin_bp.patch('/users/<user_id>/provision')
 @org_admin_bp.post('/users/<user_id>/provision')
 @require_role('org_admin')
 def org_admin_provision_user(user_id):
     org_id = get_admin_organization_id()
     if not org_id:
         return jsonify({'error': 'Organization not found for admin'}), 404
+
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
 
     user = User.query.join(Membership).filter(
         Membership.organization_id == org_id,
@@ -324,8 +339,19 @@ def org_admin_provision_user(user_id):
     if not user:
         return jsonify({'error': 'User not found in your organization'}), 404
 
-    if user.is_provisioned:
-        return jsonify({'message': 'User is already provisioned'}), 200
+    if user.is_provisioned and user.is_active:
+        return jsonify({'message': 'User is already provisioned', 'user': user.to_dict(include_sensitive=True)}), 200
+
+    # Check license limits before provisioning
+    if not user.is_active:
+        active_users = User.query.join(Membership).filter(
+            Membership.organization_id == org_id,
+            User.role == UserRole.USER,
+            User.is_active == True
+        ).count()
+
+        if active_users >= org.max_users:
+            return jsonify({'error': 'License seat limit reached'}), 403
 
     user.is_provisioned = True
     user.is_active = True
@@ -337,7 +363,7 @@ def org_admin_provision_user(user_id):
         organization_id=org_id,
         type=ActivityType.USER_PROVISIONED,
         description=f'Org admin provisioned user: {user.email}',
-        metadata={'provisioned_user_id': str(user.id)},
+        activity_metadata={'provisioned_user_id': str(user.id), 'email': user.email},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -346,6 +372,7 @@ def org_admin_provision_user(user_id):
     return jsonify({'user': user.to_dict(include_sensitive=True)})
 
 
+@org_admin_bp.patch('/users/<user_id>/deprovision')
 @org_admin_bp.post('/users/<user_id>/deprovision')
 @require_role('org_admin')
 def org_admin_deprovision_user(user_id):
@@ -361,8 +388,10 @@ def org_admin_deprovision_user(user_id):
     if not user:
         return jsonify({'error': 'User not found in your organization'}), 404
 
-    if not user.is_provisioned:
-        return jsonify({'message': 'User is already deprovisioned'}), 200
+    # Prevent deprovisioning yourself
+    current_admin_id = str(g.current_user.get('sub'))
+    if str(user.id) == current_admin_id:
+        return jsonify({'error': 'Cannot deprovision yourself'}), 400
 
     user.is_provisioned = False
     user.is_active = False
@@ -375,7 +404,59 @@ def org_admin_deprovision_user(user_id):
         organization_id=org_id,
         type=ActivityType.USER_DEPROVISIONED,
         description=f'Org admin deprovisioned user: {user.email}',
-        metadata={'deprovisioned_user_id': str(user.id)},
+        activity_metadata={'deprovisioned_user_id': str(user.id), 'email': user.email},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    ))
+    db.session.commit()
+
+    return jsonify({'user': user.to_dict(include_sensitive=True)})
+
+
+@org_admin_bp.patch('/users/<user_id>/reactivate')
+@org_admin_bp.post('/users/<user_id>/reactivate')
+@require_role('org_admin')
+def org_admin_reactivate_user(user_id):
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
+
+    user = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.id == user_id
+    ).first()
+
+    if not user:
+        return jsonify({'error': 'User not found in your organization'}), 404
+
+    if user.is_active:
+        return jsonify({'message': 'User is already active', 'user': user.to_dict(include_sensitive=True)}), 200
+
+    # Check license seat limit before reactivating
+    active_users = User.query.join(Membership).filter(
+        Membership.organization_id == org_id,
+        User.role == UserRole.USER,
+        User.is_active == True
+    ).count()
+
+    if active_users >= org.max_users:
+        return jsonify({'error': 'License seat limit reached'}), 403
+
+    user.is_active = True
+    user.is_provisioned = True
+    user.deprovisioned_at = None
+    db.session.commit()
+
+    db.session.add(ActivityLog(
+        user_id=g.current_user['sub'],
+        organization_id=org_id,
+        type=ActivityType.USER_REACTIVATED,
+        description=f'Org admin reactivated user: {user.email}',
+        activity_metadata={'reactivated_user_id': str(user.id), 'email': user.email},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -450,6 +531,25 @@ def org_admin_bulk_provisioning():
     if missing_ids:
         return jsonify({'error': f'Users not found in your organization: {missing_ids}'}), 404
 
+    current_admin_id = str(g.current_user.get('sub'))
+    org = Organization.query.get(org_id)
+    if not org:
+        return jsonify({'error': 'Organization not found'}), 404
+
+    if action == 'deprovision':
+        # Prevent deprovisioning yourself
+        if current_admin_id in found_ids:
+            return jsonify({'error': 'Cannot deprovision yourself'}), 400
+    elif action == 'provision':
+        inactive_users_to_activate = len([u for u in users if not u.is_active])
+        active_users = User.query.join(Membership).filter(
+            Membership.organization_id == org_id,
+            User.role == UserRole.USER,
+            User.is_active == True
+        ).count()
+        if active_users + inactive_users_to_activate > org.max_users:
+            return jsonify({'error': 'License seat limit reached'}), 403
+
     from datetime import datetime
     for user in users:
         if action == 'provision':
@@ -471,7 +571,7 @@ def org_admin_bulk_provisioning():
         organization_id=org_id,
         type=activity_type,
         description=description,
-        metadata={'user_ids': user_ids, 'bulk': True},
+        activity_metadata={'user_ids': user_ids, 'bulk': True},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -583,8 +683,12 @@ def org_admin_activity():
     page = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 200)
     search = request.args.get('search', '').strip()
+    user_id = request.args.get('user_id')
 
     query = ActivityLog.query.filter_by(organization_id=org_id)
+
+    if user_id:
+        query = query.filter(ActivityLog.user_id == user_id)
 
     if search:
         query = query.filter(
@@ -645,13 +749,14 @@ def org_admin_invite_user():
         return jsonify({'error': 'Organization not found'}), 404
 
     # Check license limits
-    current_users = User.query.join(Membership).filter(
+    active_users = User.query.join(Membership).filter(
         Membership.organization_id == org_id,
-        User.role == UserRole.USER
+        User.role == UserRole.USER,
+        User.is_active == True
     ).count()
     
-    if current_users >= org.max_users:
-        return jsonify({'error': f'License limit reached. Maximum {org.max_users} users allowed.'}), 403
+    if active_users >= org.max_users:
+        return jsonify({'error': 'License seat limit reached'}), 403
 
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
@@ -730,7 +835,7 @@ def org_admin_invite_user():
         organization_id=org_id,
         type=ActivityType.USER_INVITED,
         description=f'Org admin invited user: {email}',
-        metadata={'email': email, 'invite_id': str(invite.id)},
+        activity_metadata={'email': email, 'invite_id': str(invite.id)},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -770,7 +875,7 @@ def org_admin_resend_invitation(invite_id):
         organization_id=org_id,
         type=ActivityType.USER_INVITE_RESENT,
         description=f'Org admin resent invitation to: {invite.email}',
-        metadata={'invite_id': str(invite.id)},
+        activity_metadata={'invite_id': str(invite.id)},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -808,7 +913,7 @@ def org_admin_cancel_invitation(invite_id):
         organization_id=org_id,
         type=ActivityType.USER_INVITE_CANCELLED,
         description=f'Org admin cancelled invitation to: {email}',
-        metadata={'invite_id': invite_id},
+        activity_metadata={'invite_id': invite_id},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))
@@ -828,10 +933,11 @@ def org_admin_get_license():
     if not org:
         return jsonify({'error': 'Organization not found'}), 404
 
-    # Count current users
-    current_users = User.query.join(Membership).filter(
+    # Count current active users
+    active_users = User.query.join(Membership).filter(
         Membership.organization_id == org_id,
-        User.role == UserRole.USER
+        User.role == UserRole.USER,
+        User.is_active == True
     ).count()
 
     # Count scans this month
@@ -846,8 +952,8 @@ def org_admin_get_license():
             'plan_name': org.plan_name,
             'plan_status': org.plan_status,
             'max_users': org.max_users,
-            'users_used': current_users,
-            'users_remaining': max(0, org.max_users - current_users),
+            'users_used': active_users,
+            'users_remaining': max(0, org.max_users - active_users),
             'scans_per_month': org.scans_per_month,
             'scans_used': scans_this_month,
             'scans_remaining': max(0, org.scans_per_month - scans_this_month),

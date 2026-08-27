@@ -93,6 +93,8 @@ class ActivityType(str, Enum):
     EXTENSION_UNLINKED = 'extension_unlinked'
     USER_PROVISIONED = 'user_provisioned'
     USER_DEPROVISIONED = 'user_deprovisioned'
+    USER_REACTIVATED = 'user_reactivated'
+    USER_CREATED = 'user_created'
     AUTH_CONFIG_UPDATED = 'auth_config_updated'
     LICENSE_UPDATED = 'license_updated'
     LICENSE_SUSPENDED = 'license_suspended'
@@ -407,4 +409,96 @@ class ActivityLog(db.Model):
             'user_agent': self.user_agent,
             'created_at': self.created_at.isoformat(),
             'user': self.user.to_dict() if self.user else None,
+        }
+
+
+class UserGroup(db.Model):
+    __tablename__ = 'user_groups'
+
+    id = db.Column(GUID(), primary_key=True, default=uuid.uuid4)
+    organization_id = db.Column(GUID(), db.ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    organization = db.relationship('Organization', foreign_keys=[organization_id])
+    members = db.relationship('UserGroupMember', back_populates='group', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<UserGroup {self.name} org={self.organization_id}>'
+
+    def to_dict(self, include_members=False):
+        data = {
+            'id': str(self.id),
+            'organization_id': str(self.organization_id),
+            'name': self.name,
+            'description': self.description,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'member_count': len(self.members) if self.members else 0,
+        }
+        if include_members:
+            data['members'] = [m.to_dict() for m in self.members]
+        return data
+
+
+class UserGroupMember(db.Model):
+    __tablename__ = 'user_group_members'
+
+    id = db.Column(GUID(), primary_key=True, default=uuid.uuid4)
+    group_id = db.Column(GUID(), db.ForeignKey('user_groups.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(GUID(), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    group = db.relationship('UserGroup', back_populates='members')
+    user = db.relationship('User', foreign_keys=[user_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'user_id', name='uq_group_user'),
+    )
+
+    def __repr__(self):
+        return f'<UserGroupMember group={self.group_id} user={self.user_id}>'
+
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'group_id': str(self.group_id),
+            'user_id': str(self.user_id),
+            'created_at': self.created_at.isoformat(),
+            'user': self.user.to_dict() if self.user else None,
+        }
+
+
+class RiskScoreBypassRule(db.Model):
+    __tablename__ = 'risk_score_bypass_rules'
+
+    id = db.Column(GUID(), primary_key=True, default=uuid.uuid4)
+    scope = db.Column(db.String(50), nullable=False, index=True)  # global, organization, group, user
+    target_id = db.Column(GUID(), nullable=True, index=True)  # null for global; org_id, group_id, or user_id
+    organization_id = db.Column(GUID(), db.ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True, index=True)
+    max_allowed_risk_score = db.Column(db.Integer, nullable=False, default=5)  # 1 to 10 scale
+    description = db.Column(db.String(255), nullable=True)
+    created_by = db.Column(GUID(), db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    creator = db.relationship('User', foreign_keys=[created_by])
+    organization = db.relationship('Organization', foreign_keys=[organization_id])
+
+    def __repr__(self):
+        return f'<RiskScoreBypassRule scope={self.scope} target={self.target_id} score={self.max_allowed_risk_score}>'
+
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'scope': self.scope,
+            'target_id': str(self.target_id) if self.target_id else None,
+            'organization_id': str(self.organization_id) if self.organization_id else None,
+            'max_allowed_risk_score': self.max_allowed_risk_score,
+            'description': self.description,
+            'created_by': str(self.created_by) if self.created_by else None,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
         }

@@ -10,7 +10,10 @@ import { api } from '@services/api';
 export function OrgAdminProvisioningPage() {
   const [provisionedUsers, setProvisionedUsers] = useState<any[]>([]);
   const [deprovisionedUsers, setDeprovisionedUsers] = useState<any[]>([]);
+  const [provisionedTotal, setProvisionedTotal] = useState(0);
+  const [deprovisionedTotal, setDeprovisionedTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [totalsLoading, setTotalsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -21,15 +24,18 @@ export function OrgAdminProvisioningPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.orgAdminProvisioning({
+      const response: any = await api.orgAdminProvisioning({
         page: currentPage,
         per_page: 50,
         status: activeTab,
       });
+      const userList = response.users || response.data || [];
       if (activeTab === 'provisioned') {
-        setProvisionedUsers(response.data || []);
+        setProvisionedUsers(userList);
+        setProvisionedTotal(response.pagination?.total || 0);
       } else {
-        setDeprovisionedUsers(response.data || []);
+        setDeprovisionedUsers(userList);
+        setDeprovisionedTotal(response.pagination?.total || 0);
       }
       setTotalPages(response.pagination?.pages || 1);
       setSelectedUsers([]);
@@ -39,6 +45,27 @@ export function OrgAdminProvisioningPage() {
       setIsLoading(false);
     }
   }, [currentPage, activeTab]);
+
+  // Fetch totals for both tabs on mount
+  const fetchTotals = useCallback(async () => {
+    setTotalsLoading(true);
+    try {
+      const [provisionedRes, deprovisionedRes] = await Promise.all([
+        api.orgAdminProvisioning({ page: 1, per_page: 1, status: 'provisioned' }),
+        api.orgAdminProvisioning({ page: 1, per_page: 1, status: 'deprovisioned' }),
+      ]);
+      setProvisionedTotal(provisionedRes.pagination?.total || 0);
+      setDeprovisionedTotal(deprovisionedRes.pagination?.total || 0);
+    } catch (err) {
+      console.error('Failed to fetch totals:', err);
+    } finally {
+      setTotalsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTotals();
+  }, [fetchTotals]);
 
   useEffect(() => {
     fetchUsers();
@@ -118,8 +145,8 @@ export function OrgAdminProvisioningPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="provisioned">Provisioned Users ({provisionedUsers.length + (activeTab === 'provisioned' ? 0 : 0)})</TabsTrigger>
-            <TabsTrigger value="deprovisioned">Deprovisioned Users ({deprovisionedUsers.length + (activeTab === 'deprovisioned' ? 0 : 0)})</TabsTrigger>
+            <TabsTrigger value="provisioned">Provisioned Users ({provisionedTotal})</TabsTrigger>
+            <TabsTrigger value="deprovisioned">Deprovisioned Users ({deprovisionedTotal})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="provisioned" className="mt-6">
@@ -167,7 +194,7 @@ export function OrgAdminProvisioningPage() {
                       </div>
                     ))}
                   </div>
-                ) : users.length === 0 ? (
+                ) : activeTab === 'provisioned' && provisionedTotal === 0 && !totalsLoading ? (
                   <div className="text-center py-12">
                     <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -288,7 +315,7 @@ export function OrgAdminProvisioningPage() {
                       </div>
                     ))}
                   </div>
-                ) : users.length === 0 ? (
+                ) : activeTab === 'deprovisioned' && deprovisionedTotal === 0 && !totalsLoading ? (
                   <div className="text-center py-12">
                     <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

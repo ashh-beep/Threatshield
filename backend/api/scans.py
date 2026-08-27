@@ -53,6 +53,18 @@ def create_scan():
 
     verdict_str, risk_color = _determine_verdict(pred, proba_phish, in_openphish)
     risk_score = 99 if in_openphish else _compute_risk_score(proba_phish)
+
+    # Evaluate Risk Score Bypass Configuration (User -> Group -> Organization -> Global)
+    from backend.api.bypass_rules import evaluate_bypass_rule
+    bypass_eval = evaluate_bypass_rule(user_id, org_id, risk_score)
+    stages = data.get('stages') or {}
+    if bypass_eval:
+        stages['bypass_rule'] = bypass_eval
+        if bypass_eval.get('bypassed'):
+            verdict_str = "Safe"
+            risk_color = "green"
+            reasons.insert(0, bypass_eval['reason'])
+
     verdict_enum = ScanVerdict(verdict_str.lower())
 
     scan = Scan(
@@ -65,7 +77,7 @@ def create_scan():
         phishing_probability=round(proba_phish, 4),
         prediction=pred,
         reasons=reasons,
-        stages=data.get('stages', {}),
+        stages=stages,
         page_inspect_result=data.get('page_inspect_result')
     )
     db.session.add(scan)
@@ -76,7 +88,7 @@ def create_scan():
         organization_id=org_id,
         type=ActivityType.SCAN_CREATED,
         description=f'Scanned URL: {url}',
-        metadata={'scan_id': str(scan.id), 'verdict': scan.verdict.value, 'risk_score': scan.risk_score},
+        activity_metadata={'scan_id': str(scan.id), 'url': url, 'verdict': scan.verdict.value, 'risk_score': scan.risk_score},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
     ))

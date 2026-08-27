@@ -10,7 +10,7 @@ import joblib
 import numpy as np
 
 from backend.config import config
-from backend.models import db, User, Organization, Membership, Scan, ActivityLog, OrganizationAuthConfig
+from backend.models import db, User, Organization, Membership, Scan, ActivityLog, OrganizationAuthConfig, RiskScoreBypassRule, UserGroup, UserGroupMember
 
 from backend.features_from_url import extract_features_from_url, generate_reasons
 from backend.threat_api import check_openphish_sync
@@ -60,28 +60,31 @@ def create_app(config_name=None):
 
     CORS(app, resources={
         r"/*": {
-            "origins": app.config['CORS_ORIGINS'] + [re.compile(r"^chrome-extension://.*")]
+            "origins": app.config['CORS_ORIGINS'] + [re.compile(r"^chrome-extension://.*")],
+            "methods": ["GET", "HEAD", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"],
         }
     })
 
     db.init_app(app)
     Migrate(app, db)
 
-    
-
     from backend.api.auth import auth_bp
     from backend.api.users import users_bp
     from backend.api.organizations import orgs_bp
     from backend.api.scans import scans_bp
-    from backend.api.admin import admin_bp
+    from backend.api.admin import admin_bp, super_admin_bp
     from backend.api.org_admin import org_admin_bp
+    from backend.api.bypass_rules import bypass_rules_bp, user_groups_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(orgs_bp)
     app.register_blueprint(scans_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(super_admin_bp)
     app.register_blueprint(org_admin_bp)
+    app.register_blueprint(bypass_rules_bp)
+    app.register_blueprint(user_groups_bp)
 
     @app.get("/api/health")
     def api_health():
@@ -90,16 +93,7 @@ def create_app(config_name=None):
     @app.post("/api/analyze")
     def api_analyze():
         try:
-            # Debug: check raw request data
-            raw_data = request.get_data(as_text=True)
-            with open(r"E:\nvidia\Gatekeeper\backend\debug.log", "a") as f:
-                f.write(f"Raw request data: {raw_data}\n")
-                f.write(f"Content-Type: {request.content_type}\n")
-                f.write(f"Content-Length: {request.content_length}\n")
-            
             data = request.get_json(silent=True) or {}
-            with open(r"E:\nvidia\Gatekeeper\backend\debug.log", "a") as f:
-                f.write(f"Parsed JSON: {data}\n")
             url = (data.get("url") or "").strip()
             if not url:
                 return jsonify({"error": "URL is required"}), 400
@@ -123,7 +117,6 @@ def create_app(config_name=None):
             risk_score = _compute_risk_score(proba_phish)
             reasons = generate_reasons(url, features)
 
-            # Check if brand digit substitution was detected in reasons (e.g., g00gle, paypa1, app1e)
             has_digit_sub = any("Digit substitution" in r for r in reasons)
             if has_digit_sub:
                 proba_phish = max(proba_phish, 0.88)
@@ -258,8 +251,6 @@ def create_app(config_name=None):
                 db.session.commit()
         except Exception as e:
             db.session.rollback()
-            # Schema not yet migrated (e.g., new columns missing)
-            # Skip super admin initialization; it will run on next startup after migration
             app.logger.warning(f'Skipping super admin init: {e}')
 
     return app

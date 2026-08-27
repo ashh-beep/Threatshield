@@ -92,6 +92,12 @@ def require_auth(f):
         user = get_current_user()
         if not user:
             return jsonify({'error': 'Authentication required'}), 401
+        
+        from backend.models import User, UserRole
+        db_user = User.query.get(user['sub'])
+        if not db_user or not db_user.is_active:
+            return jsonify({'error': 'Account is deactivated'}), 403
+        
         g.current_user = user
         return f(*args, **kwargs)
     return decorated
@@ -106,6 +112,12 @@ def require_role(*allowed_roles):
                 return jsonify({'error': 'Authentication required'}), 401
             if user.get('role') not in allowed_roles:
                 return jsonify({'error': 'Insufficient permissions'}), 403
+            
+            from backend.models import User
+            db_user = User.query.get(user['sub'])
+            if not db_user or not db_user.is_active:
+                return jsonify({'error': 'Account is deactivated'}), 403
+            
             g.current_user = user
             return f(*args, **kwargs)
         return decorated
@@ -119,6 +131,11 @@ def require_org_access(org_id_param='org_id'):
             user = get_current_user()
             if not user:
                 return jsonify({'error': 'Authentication required'}), 401
+
+            from backend.models import User
+            db_user = User.query.get(user['sub'])
+            if not db_user or not db_user.is_active:
+                return jsonify({'error': 'Account is deactivated'}), 403
 
             org_id = kwargs.get(org_id_param) or request.view_args.get(org_id_param)
             if not org_id:

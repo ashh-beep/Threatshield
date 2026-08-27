@@ -22,3 +22,11 @@ Raw request data: {"url":"https://www.youtube.com"}
 Content-Type: application/json
 Content-Length: 33
 Parsed JSON: {'url': 'https://www.youtube.com'}
+Raw request data: {"url":"https://www.youtube.com/"}
+Content-Type: application/json
+Content-Length: 34
+Parsed JSON: {'url': 'https://www.youtube.com/'}
+Raw request data: {"url":"https://www.netflix.com/browse"}
+Content-Type: application/json
+Content-Length: 40
+Parsed JSON: {'url': 'https://www.netflix.com/browse'}

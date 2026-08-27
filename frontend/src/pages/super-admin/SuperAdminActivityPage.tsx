@@ -1,90 +1,195 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/Card';
 import { Button } from '@components/ui/Button';
 import { Badge } from '@components/ui/Badge';
+import { Input } from '@components/ui/Input';
 import { api, type ActivityLog } from '@services/api';
 
+interface ActivityWithOrg extends ActivityLog {
+  organization_name?: string;
+}
+
 export function SuperAdminActivityPage() {
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [activities, setActivities] = useState<ActivityWithOrg[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState('');
+  const [orgCache, setOrgCache] = useState<Record<string, string>>({});
 
-  const fetchActivity = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await api.getAdminActivity({
-        page: currentPage,
-        per_page: 20,
-      });
-
-      // Safely normalize API response
-      const responseData = response || {};
-      const rawActivities = Array.isArray(responseData.data) ? responseData.data : [];
-      const pagination = responseData.pagination || { pages: 1 };
-
-      // Normalize each activity to have safe defaults
-      const normalizedActivities = rawActivities.map((activity: unknown) => {
-        const a = activity as Record<string, unknown>;
-        const userData = a.user as Record<string, unknown> | undefined;
-        return {
-          id: String(a.id || ''),
-          user_id: a.user_id ?? null,
-          organization_id: a.organization_id ?? null,
-          type: String(a.type || 'unknown'),
-          description: String(a.description || ''),
-          metadata: (a.metadata as Record<string, unknown>) || {},
-          ip_address: a.ip_address ?? null,
-          user_agent: a.user_agent ?? null,
-          created_at: String(a.created_at || new Date().toISOString()),
-          user: userData ? {
-            id: String(userData.id || ''),
-            email: String(userData.email || ''),
-            first_name: String(userData.first_name || ''),
-            last_name: String(userData.last_name || ''),
-            role: String(userData.role || 'user'),
-            is_active: Boolean(userData.is_active),
-            is_verified: Boolean(userData.is_verified),
-            last_login: userData.last_login ?? null,
-            created_at: String(userData.created_at || new Date().toISOString()),
-            extension_linked: Boolean(userData.extension_linked),
-            extension_linked_at: userData.extension_linked_at ?? null,
-          } : undefined,
-        } as ActivityLog;
-      });
-
-      setActivities(normalizedActivities);
-      setTotalPages(typeof pagination.pages === 'number' && pagination.pages > 0 ? pagination.pages : 1);
-    } catch (err) {
-      console.error('Activity fetch error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch activity');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentPage]);
-
+  // Fetch activities once on mount
   useEffect(() => {
-    fetchActivity();
-  }, [fetchActivity]);
+    let cancelled = false;
+    const loadActivities = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await api.getAdminActivity({
+          page: 1,
+          per_page: 200,
+        });
+        if (!cancelled) {
+          const responseData = response as { activity?: ActivityLog[]; pagination?: { pages: number } };
+          const rawActivities = Array.isArray(responseData.activity) ? responseData.activity : [];
+
+          // Fetch organization names for activities that have organization_id
+          const orgIds = [...new Set(rawActivities.map((a) => a.organization_id).filter((id): id is string => Boolean(id)))];
+          const orgNames: Record<string, string> = {};
+
+          for (const orgId of orgIds) {
+            if (!orgNames[orgId]) {
+              try {
+                const orgResponse = await api.getOrganization(orgId);
+                orgNames[orgId] = orgResponse.organization.name;
+              } catch {
+                orgNames[orgId] = 'Unknown Organization';
+              }
+            }
+          }
+
+          const normalizedActivities: ActivityWithOrg[] = rawActivities.map((activity) => ({
+            ...activity,
+            organization_name: activity.organization_id ? orgNames[activity.organization_id] : undefined,
+          }));
+
+          setActivities(normalizedActivities);
+          setOrgCache(orgNames);
+          setTotalPages(1);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Activity fetch error:', err);
+          setError(err instanceof Error ? err.message : 'Failed to fetch activity');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadActivities();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Client-side filtered activities
+  const filteredActivities = useMemo(() => {
+    if (!search) return activities;
+    const searchLower = search.toLowerCase();
+    return activities.filter((a) =>
+      a.description.toLowerCase().includes(searchLower) ||
+      a.type.toLowerCase().includes(searchLower) ||
+      a.user?.email.toLowerCase().includes(searchLower) ||
+      a.user?.first_name.toLowerCase().includes(searchLower) ||
+      a.user?.last_name.toLowerCase().includes(searchLower)
+    );
+  }, [activities, search]);
 
   const getActionBadge = (type: string) => {
     const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
-      create: 'success',
-      update: 'info',
-      delete: 'danger',
-      login: 'success',
-      logout: 'default',
-      suspend: 'danger',
-      activate: 'success',
-      configure: 'warning',
+      user_invited: 'info',
+      user_invite_accepted: 'success',
+      user_invite_cancelled: 'warning',
+      user_invite_resent: 'info',
+      user_created: 'success',
+      user_updated: 'info',
+      user_deprovisioned: 'danger',
+      user_provisioned: 'success',
+      user_reactivated: 'success',
+      admin_user_updated: 'warning',
+      admin_org_created: 'success',
+      admin_org_updated: 'info',
+      admin_org_deleted: 'danger',
+      admin_user_deleted: 'danger',
+      org_created: 'success',
+      org_updated: 'info',
+      org_deleted: 'danger',
+      org_sso_configured: 'info',
+      org_settings_updated: 'default',
+      scan_created: 'info',
+      scan_viewed: 'default',
+      user_login: 'success',
+      user_logout: 'default',
+      user_sso_login: 'info',
+      user_password_reset: 'warning',
+      auth_config_updated: 'info',
+      license_updated: 'warning',
+      license_suspended: 'danger',
+      license_reactivated: 'success',
+      url_scanned: 'info',
     };
     return variants[type] || 'default';
   };
 
   const formatType = (type: string) => {
-    return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ');
+    return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'user_invited':
+        return (
+          <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+        );
+      case 'user_invite_accepted':
+        return (
+          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'user_sso_login':
+        return (
+          <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        );
+      case 'user_deprovisioned':
+        return (
+          <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        );
+      case 'user_reactivated':
+        return (
+          <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        );
+      case 'user_login':
+        return (
+          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+          </svg>
+        );
+      case 'scan_created':
+      case 'url_scanned':
+        return (
+          <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        );
+      case 'user_created':
+      case 'user_provisioned':
+        return (
+          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+        );
+      default:
+        return (
+          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        );
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
   };
 
   return (
@@ -100,6 +205,14 @@ export function SuperAdminActivityPage() {
                 Monitor administrative activity across the ThreatShield platform.
               </p>
             </div>
+            <form onSubmit={handleSearch} className="w-full sm:w-64">
+              <Input
+                placeholder="Search activity..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full"
+              />
+            </form>
           </div>
         </header>
 
@@ -124,10 +237,10 @@ export function SuperAdminActivityPage() {
               </svg>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Failed to load activity</h3>
               <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-              <Button variant="primary" onClick={fetchActivity}>Retry</Button>
+              <Button variant="primary" onClick={() => window.location.reload()}>Retry</Button>
             </CardContent>
           </Card>
-        ) : activities.length === 0 ? (
+        ) : filteredActivities.length === 0 ? (
           <Card variant="outlined" className="border-gray-200 dark:border-gray-700">
             <CardContent className="pt-0 text-center py-12">
               <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -143,7 +256,7 @@ export function SuperAdminActivityPage() {
           <>
             <Card variant="outlined" className="border-gray-200 dark:border-gray-700">
               <CardHeader>
-                <CardTitle className="text-lg">Recent Activity ({activities.length})</CardTitle>
+                <CardTitle className="text-lg">Recent Activity ({filteredActivities.length})</CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="overflow-x-auto">
@@ -154,11 +267,12 @@ export function SuperAdminActivityPage() {
                         <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Administrator</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Organization</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      {activities.map((activity) => (
+                      {filteredActivities.map((activity) => (
                         <tr key={activity.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
                             {(() => {
@@ -189,12 +303,40 @@ export function SuperAdminActivityPage() {
                             </div>
                           </td>
                           <td className="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-                            {activity.organization_id ? 'Organization' : '—'}
+                            {activity.organization_name || (activity.organization_id ? 'Organization' : '—')}
                           </td>
                           <td className="px-4 py-4">
-                            <Badge variant={getActionBadge(activity.type)} size="sm">
-                              {formatType(activity.type)}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              {getActivityIcon(activity.type)}
+                              <Badge variant={getActionBadge(activity.type)} size="sm">
+                                {formatType(activity.type)}
+                              </Badge>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+                            {activity.description}
+                            {activity.type === 'scan_created' && activity.metadata && (
+                              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                {activity.metadata.url ? (
+                                  <span className="font-mono text-xs text-blue-600 dark:text-blue-400 truncate max-w-xs" title={String(activity.metadata.url)}>
+                                    {String(activity.metadata.url)}
+                                  </span>
+                                ) : null}
+                                {activity.metadata.verdict ? (
+                                  <Badge
+                                    variant={String(activity.metadata.verdict) === 'safe' ? 'success' : String(activity.metadata.verdict) === 'suspicious' ? 'warning' : 'danger'}
+                                    size="sm"
+                                  >
+                                    {String(activity.metadata.verdict)}
+                                  </Badge>
+                                ) : null}
+                                {activity.metadata.risk_score !== undefined ? (
+                                  <Badge variant="default" size="sm" className="text-gray-600 dark:text-gray-400">
+                                    Risk: {Number(activity.metadata.risk_score)}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-4">
                             <Badge variant="success" size="sm" dot>Completed</Badge>
@@ -206,30 +348,6 @@ export function SuperAdminActivityPage() {
                 </div>
               </CardContent>
             </Card>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
           </>
         )}
       </div>

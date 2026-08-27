@@ -1,23 +1,30 @@
 {
   "manifest_version": 3,
-  "name": "ThreatShield (Universal In-page Risk Toast)",
+  "name": "ThreatShield",
   "version": "1.0.0",
-  "description": "Shows an in-page risk toast on as many sites as possible (SPA-friendly) and opens report only on button click. Requires authentication for personalized protection.",
-  "permissions": ["webNavigation", "storage", "tabs", "activeTab"],
+  "description": "Real-time phishing protection",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "webNavigation"
+  ],
   "host_permissions": [
     "<all_urls>",
     "http://localhost:5001/*"
   ],
-  "background": { "service_worker": "background.js" },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ThreatShield - URL Security Scanner"
+    "default_title": "ThreatShield"
   }
 }

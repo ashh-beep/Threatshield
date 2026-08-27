@@ -13,6 +13,7 @@ import { ScanDetailPage } from '@pages/dashboard/ScanDetailPage';
 import { ProfilePage } from '@pages/dashboard/ProfilePage';
 import { OrgAdminDashboardPage } from '@pages/org-admin/OrgAdminDashboardPage';
 import { OrgAdminUsersPage } from '@pages/org-admin/OrgAdminUsersPage';
+import { OrgAdminUserProfilePage } from '@pages/org-admin/OrgAdminUserProfilePage';
 import { OrgAdminProvisioningPage } from '@pages/org-admin/OrgAdminProvisioningPage';
 import { OrgAdminAuthenticationPage } from '@pages/org-admin/OrgAdminAuthenticationPage';
 import { OrgAdminActivityPage } from '@pages/org-admin/OrgAdminActivityPage';
@@ -20,9 +21,11 @@ import { OrgAdminSettingsPage } from '@pages/org-admin/OrgAdminSettingsPage';
 import { OrgAdminLayout } from '@components/layout/OrgAdminLayout';
 import { SuperAdminDashboardPage } from '@pages/super-admin/SuperAdminDashboardPage';
 import { SuperAdminOrganizationsPage } from '@pages/super-admin/SuperAdminOrganizationsPage';
+import { SuperAdminOrganizationDetailsPage } from '@pages/super-admin/SuperAdminOrganizationDetailsPage';
 import { SuperAdminCreateClientPage } from '@pages/super-admin/SuperAdminCreateClientPage';
 import { SuperAdminCreateAdminPage } from '@pages/super-admin/SuperAdminCreateAdminPage';
 import { SuperAdminAdminsPage } from '@pages/super-admin/SuperAdminAdminsPage';
+import { SuperAdminAdminProfilePage } from '@pages/super-admin/SuperAdminAdminProfilePage';
 import { SuperAdminProvisioningPage } from '@pages/super-admin/SuperAdminProvisioningPage';
 import { SuperAdminActivityPage } from '@pages/super-admin/SuperAdminActivityPage';
 import { SuperAdminSettingsPage } from '@pages/super-admin/SuperAdminSettingsPage';
@@ -158,6 +161,14 @@ function App() {
               }
             />
             <Route
+              path="/org-admin/users/:userId"
+              element={
+                <ProtectedRoute allowedRoles="org_admin">
+                  <OrgAdminUserProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/org-admin/provisioning"
               element={
                 <ProtectedRoute allowedRoles="org_admin">
@@ -210,6 +221,14 @@ function App() {
               }
             />
             <Route
+              path="/threatshield-admin/organizations/:organizationId"
+              element={
+                <ProtectedRoute allowedRoles="super_admin">
+                  <SuperAdminOrganizationDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/threatshield-admin/create-client"
               element={
                 <ProtectedRoute allowedRoles="super_admin">
@@ -230,6 +249,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles="super_admin">
                   <SuperAdminAdminsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/threatshield-admin/admins/:adminId"
+              element={
+                <ProtectedRoute allowedRoles="super_admin">
+                  <SuperAdminAdminProfilePage />
                 </ProtectedRoute>
               }
             />
