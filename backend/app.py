@@ -172,11 +172,12 @@ def create_app(config_name=None):
                         u = User.query.get(user_id)
                         if u:
                             org_id = payload.get('org_id') or (u.memberships[0].organization_id if u.memberships else None)
+                            norm_verdict = "dangerous" if verdict.lower() in ["phishing", "dangerous"] else ("suspicious" if verdict.lower() == "suspicious" else "safe")
                             scan_obj = Scan(
                                 user_id=u.id,
                                 organization_id=org_id,
                                 url=url,
-                                verdict=verdict.upper(),
+                                verdict=norm_verdict,
                                 risk_score=risk_score,
                                 risk_color=risk_color,
                                 phishing_probability=round(proba_phish, 4),
