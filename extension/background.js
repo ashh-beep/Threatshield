@@ -116,9 +116,8 @@ async function sendResult(tabId, url, out) {
     verdict = "Suspicious";
   }
 
-  const rawScore = out?.risk_score ?? 1;
-  const riskScore10 = Math.min(10, Math.max(1, Math.ceil(rawScore / 10)));
-  const threshold = settings.risk_threshold || 7;
+  const rawScore = Math.min(100, Math.max(0, Math.round(out?.risk_score ?? 0)));
+  const threshold = settings.risk_threshold || 70;
   const inOpenPhish = out?.stages?.threat_api?.in_openphish || false;
   const reasons = out?.reasons || [];
 
@@ -127,7 +126,7 @@ async function sendResult(tabId, url, out) {
     payload: {
       url,
       verdict,
-      score: riskScore10,
+      score: rawScore,
       raw_score: rawScore,
       threshold,
       risk_color: out?.risk_color || (verdict === "Phishing" ? "red" : verdict === "Suspicious" ? "yellow" : "green"),
