@@ -478,7 +478,7 @@ class RiskScoreBypassRule(db.Model):
     scope = db.Column(db.String(50), nullable=False, index=True)  # global, organization, group, user
     target_id = db.Column(GUID(), nullable=True, index=True)  # null for global; org_id, group_id, or user_id
     organization_id = db.Column(GUID(), db.ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True, index=True)
-    max_allowed_risk_score = db.Column(db.Integer, nullable=False, default=5)  # 1 to 10 scale
+    max_allowed_risk_score = db.Column(db.Integer, nullable=False, default=50)  # 1 to 100 percentage scale
     description = db.Column(db.String(255), nullable=True)
     created_by = db.Column(GUID(), db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

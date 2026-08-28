@@ -113,6 +113,8 @@ export interface Member {
 
 export interface PaginatedResponse<T> {
   data: T[];
+  activities?: T[];
+  scans?: T[];
   pagination: {
     page: number;
     per_page: number;

@@ -60,13 +60,13 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
   );
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [targetId, setTargetId] = useState<string>('');
-  const [maxRiskScore, setMaxRiskScore] = useState<number>(5);
+  const [maxRiskScore, setMaxRiskScore] = useState<number>(50);
   const [description, setDescription] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit Modal State
   const [editingRule, setEditingRule] = useState<RiskScoreBypassRule | null>(null);
-  const [editScore, setEditScore] = useState<number>(5);
+  const [editScore, setEditScore] = useState<number>(50);
   const [editDesc, setEditDesc] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -140,7 +140,7 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
       setSuccessMsg('Risk score bypass rule created successfully!');
       setDescription('');
       setTargetId('');
-      setMaxRiskScore(5);
+      setMaxRiskScore(50);
       await loadData();
     } catch (err: any) {
       setError(err?.message || 'Failed to create bypass rule.');
@@ -151,7 +151,9 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
 
   const handleOpenEdit = (rule: RiskScoreBypassRule) => {
     setEditingRule(rule);
-    setEditScore(rule.max_allowed_risk_score);
+    // Legacy support: if score <= 10, scale up to percentage
+    const scoreVal = rule.max_allowed_risk_score <= 10 ? rule.max_allowed_risk_score * 10 : rule.max_allowed_risk_score;
+    setEditScore(scoreVal);
     setEditDesc(rule.description || '');
   };
 
@@ -225,12 +227,13 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
   };
 
   const getScoreColorBadge = (score: number) => {
-    if (score <= 3) {
-      return <Badge variant="success" size="md">Strict (Score ≤ {score})</Badge>;
-    } else if (score <= 7) {
-      return <Badge variant="warning" size="md">Moderate (Score ≤ {score})</Badge>;
+    const s = score <= 10 ? score * 10 : score;
+    if (s <= 30) {
+      return <Badge variant="success" size="md">Strict (Score ≤ {s}%)</Badge>;
+    } else if (s <= 70) {
+      return <Badge variant="warning" size="md">Moderate (Score ≤ {s}%)</Badge>;
     } else {
-      return <Badge variant="danger" size="md">Permissive (Score ≤ {score})</Badge>;
+      return <Badge variant="danger" size="md">Permissive (Score ≤ {s}%)</Badge>;
     }
   };
 
@@ -260,7 +263,7 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
               <Badge variant="info" size="sm">Active</Badge>
             </CardTitle>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Configure allowed phishing risk score thresholds (1–10) using the interactive slider. Applied in strict priority order: <strong className="text-indigo-600 dark:text-indigo-400">User → Group → Organization → Global</strong>.
+              Configure allowed phishing risk score thresholds (1%–100%) using the interactive slider. Applied in strict priority order: <strong className="text-indigo-600 dark:text-indigo-400">User → Group → Organization → Global</strong>.
             </p>
           </div>
           <Button
@@ -377,13 +380,12 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
             <div className="pt-2">
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Allowed Phishing Risk Score Threshold (1–10)
+                  Allowed Phishing Risk Score Threshold (1%–100%)
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                    {maxRiskScore}
+                    {maxRiskScore}%
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">/ 10</span>
                   {getScoreColorBadge(maxRiskScore)}
                 </div>
               </div>
@@ -391,16 +393,16 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
               <input
                 type="range"
                 min="1"
-                max="10"
+                max="100"
                 step="1"
                 value={maxRiskScore}
                 onChange={(e) => setMaxRiskScore(parseInt(e.target.value, 10))}
                 className="w-full h-2.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
               <div className="flex justify-between text-xs text-gray-400 mt-1 font-mono">
-                <span>1 (Strict protection ≤10%)</span>
-                <span>5 (Medium ≤50%)</span>
-                <span>10 (Permissive ≤100%)</span>
+                <span>1% (Strict protection ≤1%)</span>
+                <span>50% (Medium ≤50%)</span>
+                <span>100% (Permissive ≤100%)</span>
               </div>
             </div>
 
@@ -451,31 +453,34 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {rules.map((r) => (
-                      <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                        <td className="px-4 py-3.5 font-medium">{getScopeBadge(r.scope)}</td>
-                        <td className="px-4 py-3.5 text-gray-900 dark:text-gray-100 font-medium">
-                          {r.target_name || 'Global'}
-                        </td>
-                        <td className="px-4 py-3.5 font-mono">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{r.max_allowed_risk_score} / 10</span>
-                            <span className="text-xs text-gray-500"> (≤ {r.max_allowed_risk_score * 10}%)</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-gray-500 dark:text-gray-400">
-                          {r.description || '—'}
-                        </td>
-                        <td className="px-4 py-3.5 text-right space-x-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(r)}>
-                            Edit
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteRule(r.id)}>
-                            Delete
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {rules.map((r) => {
+                      const displayScore = r.max_allowed_risk_score <= 10 ? r.max_allowed_risk_score * 10 : r.max_allowed_risk_score;
+                      return (
+                        <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                          <td className="px-4 py-3.5 font-medium">{getScopeBadge(r.scope)}</td>
+                          <td className="px-4 py-3.5 text-gray-900 dark:text-gray-100 font-medium">
+                            {r.target_name || 'Global'}
+                          </td>
+                          <td className="px-4 py-3.5 font-mono">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-indigo-600 dark:text-indigo-400">{displayScore}%</span>
+                              {getScoreColorBadge(displayScore)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-gray-500 dark:text-gray-400">
+                            {r.description || '—'}
+                          </td>
+                          <td className="px-4 py-3.5 text-right space-x-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(r)}>
+                              Edit
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteRule(r.id)}>
+                              Delete
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -503,21 +508,29 @@ export function RiskScoreBypassSection({ isSuperAdmin = false }: RiskScoreBypass
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Allowed Risk Score Threshold (1–10)
+                Allowed Risk Score Threshold (1%–100%)
               </label>
-              <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                {editScore} / 10
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                  {editScore}%
+                </span>
+                {getScoreColorBadge(editScore)}
+              </div>
             </div>
             <input
               type="range"
               min="1"
-              max="10"
+              max="100"
               step="1"
               value={editScore}
               onChange={(e) => setEditScore(parseInt(e.target.value, 10))}
               className="w-full h-2.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
+            <div className="flex justify-between text-xs text-gray-400 mt-1 font-mono">
+              <span>1% (Strict ≤1%)</span>
+              <span>50% (Medium ≤50%)</span>
+              <span>100% (Permissive ≤100%)</span>
+            </div>
           </div>
 
           <div>

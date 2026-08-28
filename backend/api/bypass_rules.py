@@ -102,10 +102,10 @@ def create_bypass_rule():
 
     try:
         max_score = int(max_score)
-        if max_score < 1 or max_score > 10:
+        if max_score < 1 or max_score > 100:
             raise ValueError()
     except (ValueError, TypeError):
-        return jsonify({'error': 'max_allowed_risk_score must be an integer between 1 and 10'}), 400
+        return jsonify({'error': 'max_allowed_risk_score must be an integer between 1 and 100'}), 400
 
     # Role permission checks
     rule_org_id = None
@@ -177,7 +177,7 @@ def create_bypass_rule():
         user_id=user_id,
         organization_id=rule_org_id,
         type=ActivityType.ORG_SETTINGS_UPDATED,
-        description=f'Created Risk Score Bypass Rule (scope: {scope}, allowed score: {max_score}/10)',
+        description=f'Created Risk Score Bypass Rule (scope: {scope}, allowed score: {max_score}%)',
         activity_metadata={'rule_id': str(rule.id), 'scope': scope, 'max_allowed_risk_score': max_score},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
@@ -222,11 +222,11 @@ def update_bypass_rule(rule_id):
     if max_score is not None:
         try:
             max_score = int(max_score)
-            if max_score < 1 or max_score > 10:
+            if max_score < 1 or max_score > 100:
                 raise ValueError()
             rule.max_allowed_risk_score = max_score
         except (ValueError, TypeError):
-            return jsonify({'error': 'max_allowed_risk_score must be an integer between 1 and 10'}), 400
+            return jsonify({'error': 'max_allowed_risk_score must be an integer between 1 and 100'}), 400
 
     if description is not None:
         rule.description = description.strip()
@@ -237,7 +237,7 @@ def update_bypass_rule(rule_id):
         user_id=user_id,
         organization_id=rule.organization_id,
         type=ActivityType.ORG_SETTINGS_UPDATED,
-        description=f'Updated Risk Score Bypass Rule {rule.id}',
+        description=f'Updated Risk Score Bypass Rule {rule.id} (allowed score: {rule.max_allowed_risk_score}%)',
         activity_metadata={'rule_id': str(rule.id), 'max_allowed_risk_score': rule.max_allowed_risk_score},
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent')
@@ -420,7 +420,7 @@ def evaluate_bypass_rule(user_id, org_id, raw_risk_score):
     Returns: dict or None
     dict contains:
       - 'bypassed': True/False
-      - 'allowed_score': int (1-10)
+      - 'allowed_score': int (1-100 percentage)
       - 'matched_scope': string ('user', 'group', 'organization', 'global')
       - 'matched_rule_id': string
       - 'reason': string
@@ -428,16 +428,21 @@ def evaluate_bypass_rule(user_id, org_id, raw_risk_score):
     if not user_id:
         return None
 
+    def _get_threshold(score):
+        # Support legacy 1-10 scores if any exist in DB
+        return score * 10 if score <= 10 else score
+
     # Step 1: Check User-level rule
     user_rule = RiskScoreBypassRule.query.filter_by(scope='user', target_id=user_id).first()
     if user_rule:
-        bypassed = (raw_risk_score <= user_rule.max_allowed_risk_score * 10)
+        thresh = _get_threshold(user_rule.max_allowed_risk_score)
+        bypassed = (raw_risk_score <= thresh)
         return {
             'bypassed': bypassed,
-            'allowed_score': user_rule.max_allowed_risk_score,
+            'allowed_score': thresh,
             'matched_scope': 'user',
             'matched_rule_id': str(user_rule.id),
-            'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}/100) is within allowed user threshold (<= {user_rule.max_allowed_risk_score}/10)"
+            'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}%) is within allowed user threshold (<= {thresh}%)"
         }
 
     # Step 2: Check Group-level rule
@@ -449,14 +454,15 @@ def evaluate_bypass_rule(user_id, org_id, raw_risk_score):
             RiskScoreBypassRule.target_id.in_(group_ids)
         ).all()
         if group_rules:
-            best_rule = max(group_rules, key=lambda r: r.max_allowed_risk_score)
-            bypassed = (raw_risk_score <= best_rule.max_allowed_risk_score * 10)
+            best_rule = max(group_rules, key=lambda r: _get_threshold(r.max_allowed_risk_score))
+            thresh = _get_threshold(best_rule.max_allowed_risk_score)
+            bypassed = (raw_risk_score <= thresh)
             return {
                 'bypassed': bypassed,
-                'allowed_score': best_rule.max_allowed_risk_score,
+                'allowed_score': thresh,
                 'matched_scope': 'group',
                 'matched_rule_id': str(best_rule.id),
-                'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}/100) is within allowed group threshold (<= {best_rule.max_allowed_risk_score}/10)"
+                'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}%) is within allowed group threshold (<= {thresh}%)"
             }
 
     # Step 3: Check Organization-level rule
@@ -468,25 +474,27 @@ def evaluate_bypass_rule(user_id, org_id, raw_risk_score):
     if org_id:
         org_rule = RiskScoreBypassRule.query.filter_by(scope='organization', target_id=org_id).first()
         if org_rule:
-            bypassed = (raw_risk_score <= org_rule.max_allowed_risk_score * 10)
+            thresh = _get_threshold(org_rule.max_allowed_risk_score)
+            bypassed = (raw_risk_score <= thresh)
             return {
                 'bypassed': bypassed,
-                'allowed_score': org_rule.max_allowed_risk_score,
+                'allowed_score': thresh,
                 'matched_scope': 'organization',
                 'matched_rule_id': str(org_rule.id),
-                'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}/100) is within allowed organization threshold (<= {org_rule.max_allowed_risk_score}/10)"
+                'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}%) is within allowed organization threshold (<= {thresh}%)"
             }
 
     # Step 4: Check Global-level rule
     global_rule = RiskScoreBypassRule.query.filter_by(scope='global').first()
     if global_rule:
-        bypassed = (raw_risk_score <= global_rule.max_allowed_risk_score * 10)
+        thresh = _get_threshold(global_rule.max_allowed_risk_score)
+        bypassed = (raw_risk_score <= thresh)
         return {
             'bypassed': bypassed,
-            'allowed_score': global_rule.max_allowed_risk_score,
+            'allowed_score': thresh,
             'matched_scope': 'global',
             'matched_rule_id': str(global_rule.id),
-            'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}/100) is within allowed global threshold (<= {global_rule.max_allowed_risk_score}/10)"
+            'reason': f"[Bypass Rule Applied] Risk score ({raw_risk_score}%) is within allowed global threshold (<= {thresh}%)"
         }
 
     return None
