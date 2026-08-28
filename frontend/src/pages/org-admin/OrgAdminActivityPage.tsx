@@ -84,8 +84,8 @@ export function OrgAdminActivityPage() {
   const [auditError, setAuditError] = useState<string | null>(null);
 
   // Load User Scans History
-  const loadUserScans = async () => {
-    setIsScansLoading(true);
+  const loadUserScans = async (isSilent = false) => {
+    if (!isSilent) setIsScansLoading(true);
     try {
       const res = await api.orgAdminGetUserScans({
         user_id: selectedUser || undefined,
@@ -100,14 +100,14 @@ export function OrgAdminActivityPage() {
     } catch (err) {
       console.error('Failed to load user scans:', err);
     } finally {
-      setIsScansLoading(false);
+      if (!isSilent) setIsScansLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUserScans();
+    loadUserScans(false);
     const interval = setInterval(() => {
-      loadUserScans();
+      loadUserScans(true);
     }, 4000);
     return () => clearInterval(interval);
   }, [selectedUser, selectedVerdict, scansPage]);

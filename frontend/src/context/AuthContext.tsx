@@ -26,17 +26,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const isAuthenticated = !!user;
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isOrgAdmin = user?.role === 'org_admin';
-  const isUser = user?.role === 'user';
+  const isSuperAdmin = (user?.role || '').toLowerCase() === 'super_admin';
+  const isOrgAdmin = (user?.role || '').toLowerCase() === 'org_admin' || (user?.memberships?.[0]?.role || '').toLowerCase() === 'org_admin';
+  const isUser = (user?.role || '').toLowerCase() === 'user';
 
   const primaryOrgId = user?.memberships?.[0]?.organization_id || null;
   const primaryOrgRole = user?.memberships?.[0]?.role || null;
 
   const hasRole = useCallback((roles: string | string[]) => {
     if (!user) return false;
-    const roleArray = Array.isArray(roles) ? roles : [roles];
-    return roleArray.includes(user.role);
+    const roleArray = (Array.isArray(roles) ? roles : [roles]).map(r => r.toLowerCase());
+    const userRole = (user.role || '').toLowerCase();
+    const memRole = (user.memberships?.[0]?.role || '').toLowerCase();
+    return roleArray.includes(userRole) || roleArray.includes(memRole);
   }, [user]);
 
   const refreshUser = useCallback(async () => {

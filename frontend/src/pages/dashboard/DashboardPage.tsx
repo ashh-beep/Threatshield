@@ -42,8 +42,8 @@ export function DashboardPage() {
     }
   }, [location, navigate, reset]);
 
-  const fetchScans = useCallback(async () => {
-    setIsLoadingScans(true);
+  const fetchScans = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoadingScans(true);
     try {
       const orgId = primaryOrgId || undefined;
       const response = await api.listScans({ page: currentPage, per_page: 10, org_id: orgId });
@@ -51,10 +51,8 @@ export function DashboardPage() {
       setTotalPages(response.pagination?.pages ?? 1);
     } catch (err) {
       console.error('Failed to fetch scans:', err);
-      setScans([]);
-      setTotalPages(1);
     } finally {
-      setIsLoadingScans(false);
+      if (!isSilent) setIsLoadingScans(false);
     }
   }, [currentPage, primaryOrgId]);
 
@@ -69,10 +67,10 @@ export function DashboardPage() {
   }, [primaryOrgId]);
 
   useEffect(() => {
-    fetchScans();
+    fetchScans(false);
     fetchStats();
     const pollInterval = setInterval(() => {
-      fetchScans();
+      fetchScans(true);
       fetchStats();
     }, 4000);
     return () => clearInterval(pollInterval);
