@@ -416,15 +416,15 @@
   // ── Extension Message Listener ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "GATEKEEPER_PING") {
+    if (message?.type === "THREATSHIELD_PING" || message?.type === "GATEKEEPER_PING") {
       sendResponse({ ok: true });
       return;
     }
 
-    if (message?.type === "GATEKEEPER_RESULT") {
+    if (message?.type === "THREATSHIELD_RESULT" || message?.type === "GATEKEEPER_RESULT") {
       injectStyles();
       const payload = message.payload;
-      const scorePct = Math.min(100, Math.max(0, Math.round(payload?.score || 0)));
+      const scorePct = Math.min(100, Math.max(0, Math.round(payload?.score || payload?.raw_score || 0)));
       const thresholdPct = Math.min(100, Math.max(0, Math.round(payload?.threshold || 70)));
       const verdict = (payload?.verdict || "Safe").toLowerCase();
 

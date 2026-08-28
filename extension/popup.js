@@ -85,25 +85,29 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 async function getToken() {
-  const result = await chrome.storage.local.get('gatekeeper_token');
-  return result.gatekeeper_token || null;
+  const result = await chrome.storage.local.get(['threatshield_token', 'gatekeeper_token']);
+  return result.threatshield_token || result.gatekeeper_token || null;
 }
 
 async function setToken(token) {
-  await chrome.storage.local.set({ gatekeeper_token: token });
+  await chrome.storage.local.set({ threatshield_token: token, gatekeeper_token: token });
 }
 
 async function clearTokens() {
-  await chrome.storage.local.remove(['gatekeeper_token', 'gatekeeper_refresh_token', 'gatekeeper_user']);
+  await chrome.storage.local.remove([
+    'threatshield_token', 'gatekeeper_token',
+    'threatshield_refresh_token', 'gatekeeper_refresh_token',
+    'threatshield_user', 'gatekeeper_user'
+  ]);
 }
 
 async function getUser() {
-  const result = await chrome.storage.local.get('gatekeeper_user');
-  return result.gatekeeper_user || null;
+  const result = await chrome.storage.local.get(['threatshield_user', 'gatekeeper_user']);
+  return result.threatshield_user || result.gatekeeper_user || null;
 }
 
 async function setUser(user) {
-  await chrome.storage.local.set({ gatekeeper_user: user });
+  await chrome.storage.local.set({ threatshield_user: user, gatekeeper_user: user });
 }
 
 async function login(email, password) {
@@ -180,24 +184,24 @@ elements.logoutBtn.addEventListener('click', async () => {
   await clearTokens();
   showNotAuthenticated();
   // Notify background script to stop scanning
-  chrome.runtime.sendMessage({ type: 'GATEKEEPER_LOGOUT' });
+  chrome.runtime.sendMessage({ type: 'THREATSHIELD_LOGOUT' });
 });
 
 elements.openDashboard.addEventListener('click', (e) => {
   e.preventDefault();
-  chrome.tabs.create({ url: 'http://localhost:5001/dashboard' });
+  chrome.tabs.create({ url: 'http://localhost:3000/dashboard' });
 });
 
 elements.registerLink.addEventListener('click', (e) => {
   e.preventDefault();
-  chrome.tabs.create({ url: 'http://localhost:5001/register' });
+  chrome.tabs.create({ url: 'http://localhost:3000/register' });
 });
 
 // Listen for settings changes
 elements.protectionToggle.addEventListener('change', async () => {
   await chrome.storage.local.set({ protection_enabled: elements.protectionToggle.checked });
   chrome.runtime.sendMessage({ 
-    type: 'GATEKEEPER_SETTINGS_UPDATE', 
+    type: 'THREATSHIELD_SETTINGS_UPDATE', 
     protection_enabled: elements.protectionToggle.checked 
   });
 });
@@ -205,7 +209,7 @@ elements.protectionToggle.addEventListener('change', async () => {
 elements.autoScanToggle.addEventListener('change', async () => {
   await chrome.storage.local.set({ auto_scan_enabled: elements.autoScanToggle.checked });
   chrome.runtime.sendMessage({ 
-    type: 'GATEKEEPER_SETTINGS_UPDATE', 
+    type: 'THREATSHIELD_SETTINGS_UPDATE', 
     auto_scan_enabled: elements.autoScanToggle.checked 
   });
 });
