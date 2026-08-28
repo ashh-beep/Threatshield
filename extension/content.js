@@ -318,7 +318,11 @@
     el.id = TOAST_ID;
     el.innerHTML = `
       <div class="ts-toast-inner">
-        <span class="ts-toast-icon">🛡️</span>
+        <div style="width: 28px; height: 28px; border-radius: 8px; background: #4F46E5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="16" height="16" viewBox="0 0 128 128" fill="none">
+            <path d="M48 64L58.6667 74.6667L80 53.3333M109.963 31.9147C87.4187 31.9147 68.32 23.472 64 15.7013C59.68 23.472 40.5813 31.9147 18.0373 31.9147C16.0373 48.0693 21.0373 78.4373 64 112C106.963 78.4373 111.963 48.0693 109.963 31.9147Z" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="ts-toast-body">
           <div class="ts-toast-header">
             <span class="ts-toast-title">ThreatShield Protection</span>

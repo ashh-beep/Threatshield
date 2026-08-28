@@ -961,3 +961,60 @@ def org_admin_get_license():
             'is_expired': org.license_expiry and org.license_expiry < datetime.utcnow(),
         }
     })
+
+
+@org_admin_bp.get('/user-scans')
+@require_role('org_admin')
+def org_admin_user_scans():
+    org_id = get_admin_organization_id()
+    if not org_id:
+        return jsonify({'error': 'Organization not found for admin'}), 404
+
+    target_user_id = request.args.get('user_id')
+    verdict_filter = request.args.get('verdict')
+    search = request.args.get('search', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+
+    # Fetch users in organization for selection filter
+    org_memberships = Membership.query.filter_by(organization_id=org_id).all()
+    org_user_ids = [m.user_id for m in org_memberships]
+    org_users = User.query.filter(User.id.in_(org_user_ids)).all() if org_user_ids else []
+
+    user_list = [{
+        'id': str(u.id),
+        'email': u.email,
+        'name': f"{(u.first_name or '')} {(u.last_name or '')}".strip() or u.email,
+        'role': u.role.value if hasattr(u.role, 'value') else str(u.role)
+    } for u in org_users]
+
+    query = Scan.query.filter(Scan.organization_id == org_id)
+
+    if target_user_id:
+        query = query.filter(Scan.user_id == target_user_id)
+
+    if verdict_filter:
+        query = query.filter(Scan.verdict == verdict_filter.upper())
+
+    if search:
+        query = query.filter(Scan.url.ilike(f"%{search}%"))
+
+    pagination = query.order_by(Scan.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+    scans_data = []
+    user_map = {str(u.id): u for u in org_users}
+
+    for s in pagination.items:
+        s_user = user_map.get(str(s.user_id)) if s.user_id else None
+        sd = s.to_dict()
+        sd['user_email'] = s_user.email if s_user else 'System/Anonymous'
+        sd['user_name'] = f"{(s_user.first_name or '')} {(s_user.last_name or '')}".strip() if (s_user and (s_user.first_name or s_user.last_name)) else (s_user.email if s_user else 'System/Anonymous')
+        scans_data.append(sd)
+
+    return jsonify({
+        'users': user_list,
+        'scans': scans_data,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'current_page': page
+    })

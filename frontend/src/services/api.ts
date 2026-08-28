@@ -850,6 +850,22 @@ class ApiService {
     }, true);
   }
 
+  async orgAdminGetUserScans(params?: { user_id?: string; verdict?: string; search?: string; page?: number; per_page?: number }): Promise<{
+    users: { id: string; name: string; email: string; role: string }[];
+    scans: any[];
+    total: number;
+    pages: number;
+    current_page: number;
+  }> {
+    const searchParams = new URLSearchParams();
+    if (params?.user_id) searchParams.set('user_id', params.user_id);
+    if (params?.verdict) searchParams.set('verdict', params.verdict);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
+    return this.request(`/org-admin/user-scans?${searchParams.toString()}`, {}, true);
+  }
+
   async orgAdminGetAuthConfig(): Promise<{ auth_config: any }> {
     return this.request('/org-admin/auth-config', {}, true);
   }

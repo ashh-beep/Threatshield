@@ -31,6 +31,26 @@ interface ActivityLog {
   };
 }
 
+interface OrgUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface UserScan {
+  id: string;
+  url: string;
+  verdict: string;
+  risk_score: number;
+  risk_color: string;
+  phishing_probability: number;
+  reasons: string[];
+  created_at: string;
+  user_email: string;
+  user_name: string;
+}
+
 const getVerdictBadgeVariant = (verdict?: string): 'success' | 'warning' | 'danger' | 'default' => {
   switch (verdict?.toLowerCase()) {
     case 'safe':
@@ -38,329 +58,308 @@ const getVerdictBadgeVariant = (verdict?: string): 'success' | 'warning' | 'dang
     case 'suspicious':
       return 'warning';
     case 'dangerous':
+    case 'phishing':
       return 'danger';
     default:
       return 'default';
   }
 };
 
-const getRiskScoreColor = (score?: number): string => {
-  if (score === undefined) return 'text-gray-500';
-  if (score >= 70) return 'text-red-600 dark:text-red-400';
-  if (score >= 40) return 'text-yellow-600 dark:text-yellow-400';
-  return 'text-green-600 dark:text-green-400';
-};
-
 export function OrgAdminActivityPage() {
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'scans' | 'audit'>('scans');
 
-  // Fetch activities once on mount
+  // User-wise Scans State
+  const [users, setUsers] = useState<OrgUser[]>([]);
+  const [userScans, setUserScans] = useState<UserScan[]>([]);
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [selectedVerdict, setSelectedVerdict] = useState<string>('');
+  const [scanSearch, setScanSearch] = useState<string>('');
+  const [isScansLoading, setIsScansLoading] = useState<boolean>(true);
+  const [scansPage, setScansPage] = useState<number>(1);
+  const [scansTotalPages, setScansTotalPages] = useState<number>(1);
+
+  // Audit Logs State
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [isAuditLoading, setIsAuditLoading] = useState<boolean>(true);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Load User Scans History
+  const loadUserScans = async () => {
+    setIsScansLoading(true);
+    try {
+      const res = await api.orgAdminGetUserScans({
+        user_id: selectedUser || undefined,
+        verdict: selectedVerdict || undefined,
+        search: scanSearch || undefined,
+        page: scansPage,
+        per_page: 15,
+      });
+      setUsers(res.users || []);
+      setUserScans(res.scans || []);
+      setScansTotalPages(res.pages || 1);
+    } catch (err) {
+      console.error('Failed to load user scans:', err);
+    } finally {
+      setIsScansLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
+    loadUserScans();
+  }, [selectedUser, selectedVerdict, scansPage]);
+
+  // Load Audit Logs
+  useEffect(() => {
     const loadActivities = async () => {
-      setIsLoading(true);
-      setError(null);
+      setIsAuditLoading(true);
+      setAuditError(null);
       try {
-        const response = await api.orgAdminActivity({
-          page: 1,
-          per_page: 200,
-        });
-        if (!cancelled) {
-          const activitiesData = (response as { activity?: ActivityLog[] }).activity || [];
-          setActivities(activitiesData);
-          setTotalPages(1);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load activity');
-        }
+        const response = await api.orgAdminActivity({ page: 1, per_page: 50 });
+        setActivities(response.activities || []);
+      } catch (err: any) {
+        setAuditError(err.message || 'Failed to load audit log');
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        setIsAuditLoading(false);
       }
     };
     loadActivities();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  // Client-side filtered activities
-  const filteredActivities = useMemo(() => {
-    if (!search) return activities;
-    const searchLower = search.toLowerCase();
-    return activities.filter((a) =>
-      a.description.toLowerCase().includes(searchLower) ||
-      a.type.toLowerCase().includes(searchLower) ||
-      a.user?.email.toLowerCase().includes(searchLower) ||
-      a.user?.first_name.toLowerCase().includes(searchLower) ||
-      a.user?.last_name.toLowerCase().includes(searchLower)
-    );
-  }, [activities, search]);
-
-  const getActionBadge = (type: string) => {
-    const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
-      user_created: 'success',
-      user_updated: 'info',
-      user_deprovisioned: 'danger',
-      user_provisioned: 'success',
-      admin_user_updated: 'warning',
-      auth_config_updated: 'info',
-      org_created: 'success',
-      org_updated: 'info',
-      org_sso_configured: 'info',
-      org_settings_updated: 'default',
-      user_login: 'success',
-      user_logout: 'default',
-      user_register: 'success',
-      user_sso_login: 'info',
-      user_password_reset: 'warning',
-      scan_created: 'info',
-      scan_viewed: 'default',
-      user_invited: 'info',
-      user_invite_accepted: 'success',
-      user_invite_cancelled: 'warning',
-      user_invite_resent: 'info',
-      user_reactivated: 'success',
-      url_scanned: 'info',
-    };
-    return variants[type] || 'default';
-  };
-
-  const formatType = (type: string) => {
-    return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  };
-
-  const renderActionIcon = (type: string) => {
-    switch (type) {
-      case 'user_invited':
-        return (
-          <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-          </svg>
-        );
-      case 'user_invite_accepted':
-        return (
-          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
-      case 'user_sso_login':
-        return (
-          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-        );
-      case 'scan_created':
-      case 'url_scanned':
-        return (
-          <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        );
-      case 'user_deprovisioned':
-        return (
-          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-        );
-      case 'user_reactivated':
-        return (
-          <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        );
-      case 'user_login':
-        return (
-          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-          </svg>
-        );
-      case 'user_logout':
-        return (
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-        );
-      case 'user_created':
-      case 'user_provisioned':
-        return (
-          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-        );
-    }
-  };
-
-  const renderDescription = (activity: ActivityLog) => {
-    if (activity.type === 'scan_created' && activity.metadata) {
-      const { url, verdict, risk_score } = activity.metadata;
-      return (
-        <div className="space-y-1">
-          {url && (
-            <p className="font-mono text-sm text-blue-600 dark:text-blue-400 truncate max-w-xs" title={url}>
-              {url}
-            </p>
-          )}
-          <div className="flex items-center gap-2 flex-wrap">
-            {verdict && (
-              <Badge variant={getVerdictBadgeVariant(verdict)} size="sm">
-                {verdict.charAt(0).toUpperCase() + verdict.slice(1)}
-              </Badge>
-            )}
-            {risk_score !== undefined && (
-              <Badge variant="default" size="sm" className={getRiskScoreColor(risk_score)}>
-                Risk: {risk_score}
-              </Badge>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return <span>{activity.description}</span>;
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setScansPage(1);
+    loadUserScans();
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <header className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Search History & Audit Logs
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Monitor user web navigation scans, threat verdicts, and organization activity stream
+          </p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+          <button
+            onClick={() => setActiveTab('scans')}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+              activeTab === 'scans'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+            }`}
+          >
+            🔍 User Search History
+          </button>
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+              activeTab === 'audit'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+            }`}
+          >
+            📜 Audit Activity Stream
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'scans' ? (
+        <Card variant="outlined" className="p-6 space-y-6">
+          {/* Filters Bar */}
+          <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100">
-                Activity
-              </h1>
-              <p className="mt-1 text-gray-600 dark:text-gray-400">
-                Monitor administrative activity for your organization
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                Filter by User
+              </label>
+              <select
+                value={selectedUser}
+                onChange={(e) => {
+                  setSelectedUser(e.target.value);
+                  setScansPage(1);
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">All Organization Users ({users.length})</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                Verdict Level
+              </label>
+              <select
+                value={selectedVerdict}
+                onChange={(e) => {
+                  setSelectedVerdict(e.target.value);
+                  setScansPage(1);
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">All Verdicts</option>
+                <option value="DANGEROUS">🚨 Dangerous / Phishing</option>
+                <option value="SUSPICIOUS">⚠️ Suspicious</option>
+                <option value="SAFE">✅ Safe</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                Search URL or Domain
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. google.com, paypal"
+                  value={scanSearch}
+                  onChange={(e) => setScanSearch(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                />
+                <Button type="submit" variant="primary" size="sm">
+                  Search
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          {/* User Scans List Table */}
+          {isScansLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent" />
+            </div>
+          ) : userScans.length === 0 ? (
+            <div className="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700">
+              <span className="text-4xl mb-3 block">🔎</span>
+              <p className="text-gray-700 dark:text-gray-300 font-semibold text-lg">No URL Scans Found</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                No search scan history matches your selected user or filter parameters.
               </p>
             </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            <input
-              type="text"
-              placeholder="Search activity..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-          </div>
-        </header>
-
-        {isLoading ? (
-          <div className="animate-pulse space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} variant="outlined" className="border-gray-200 dark:border-gray-700">
-                <CardContent className="pt-0">
-                  <div className="p-4">
-                    <div className="h-4 w-1/4 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-                    <div className="h-3 w-1/2 bg-gray-200 dark:bg-gray-700 rounded" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : error ? (
-          <Card variant="outlined" className="border-red-200 dark:border-red-800">
-            <CardContent className="pt-0 text-center py-8">
-              <svg className="w-12 h-12 mx-auto text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Failed to load activity</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-              <Button variant="primary" onClick={() => window.location.reload()}>Retry</Button>
-            </CardContent>
-          </Card>
-        ) : filteredActivities.length === 0 ? (
-          <Card variant="outlined" className="border-gray-200 dark:border-gray-700">
-            <CardContent className="pt-0 text-center py-12">
-              <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">No activity yet</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Organization activity will appear here as users are created, provisioned, and configured.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <Card variant="outlined" className="border-gray-200 dark:border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-lg">Recent Activity ({filteredActivities.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actor</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+          ) : (
+            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-2xl">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <th className="py-3.5 px-4">User</th>
+                    <th className="py-3.5 px-4">Scanned URL</th>
+                    <th className="py-3.5 px-4">Verdict</th>
+                    <th className="py-3.5 px-4">Risk Score</th>
+                    <th className="py-3.5 px-4">Threat Indicators</th>
+                    <th className="py-3.5 px-4">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                  {userScans.map((scan) => {
+                    const verdictStr = (scan.verdict || 'safe').toLowerCase();
+                    return (
+                      <tr key={scan.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                        <td className="py-3.5 px-4 font-medium text-gray-900 dark:text-gray-100">
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-gray-100">{scan.user_name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{scan.user_email}</p>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-xs text-indigo-600 dark:text-indigo-400 max-w-xs truncate" title={scan.url}>
+                          {scan.url}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <Badge variant={getVerdictBadgeVariant(verdictStr)} size="sm">
+                            {verdictStr.toUpperCase()}
+                          </Badge>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-bold">
+                          <span className={
+                            scan.risk_score >= 70 ? 'text-red-600 dark:text-red-400' :
+                            scan.risk_score >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'
+                          }>
+                            {scan.risk_score}%
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-gray-600 dark:text-gray-400 max-w-xs truncate">
+                          {scan.reasons && scan.reasons.length > 0 ? scan.reasons.join(', ') : 'No anomalies detected'}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(scan.created_at).toLocaleString()}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      {filteredActivities.map((activity) => (
-                        <tr key={activity.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                            {new Date(activity.created_at).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              {activity.user && (
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                                  <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
-                                    {activity.user.first_name?.[0] || activity.user.email?.[0]?.toUpperCase() || 'U'}
-                                  </span>
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-medium text-gray-900 dark:text-gray-100">
-                                  {activity.user ? `${activity.user.first_name} ${activity.user.last_name}` : 'System'}
-                                </p>
-                                {activity.user && (
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">{activity.user.email}</p>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              {renderActionIcon(activity.type)}
-                              <Badge variant={getActionBadge(activity.type)} size="sm">
-                                {formatType(activity.type)}
-                              </Badge>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-                            {renderDescription(activity)}
-                          </td>
-                          <td className="px-4 py-4">
-                            <Badge variant="success" size="sm" dot>Completed</Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {scansTotalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={scansPage <= 1}
+                onClick={() => setScansPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                Page {scansPage} of {scansTotalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={scansPage >= scansTotalPages}
+                onClick={() => setScansPage((p) => Math.min(scansTotalPages, p + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </Card>
+      ) : (
+        /* Audit Activity Stream */
+        <Card variant="outlined" className="p-6">
+          <CardHeader className="px-0 pt-0">
+            <CardTitle>System Audit Log</CardTitle>
+          </CardHeader>
+          <CardContent className="px-0 pb-0">
+            {isAuditLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent" />
+              </div>
+            ) : auditError ? (
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-sm">
+                {auditError}
+              </div>
+            ) : activities.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">No activity logs recorded yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {activities.map((act) => (
+                  <div key={act.id} className="flex items-start gap-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
+                    <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                      📜
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{act.description}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {act.user ? `${act.user.first_name} ${act.user.last_name} (${act.user.email})` : 'System'} • {new Date(act.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
