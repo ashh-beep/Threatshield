@@ -168,7 +168,12 @@ async function handleUrl(tabId, url) {
   try {
     if (!tabId || !isHttpUrl(url) || shouldIgnoreUrl(url)) return;
     if (!settings.protection_enabled) return;
-    if (bypassedUrls.has(url)) return;
+    try {
+      const u = new URL(url);
+      if (bypassedUrls.has(url) || bypassedUrls.has(u.origin + u.pathname) || bypassedUrls.has(u.hostname)) return;
+    } catch {
+      if (bypassedUrls.has(url)) return;
+    }
 
     // Debounce — skip if same URL was checked in the last 3 seconds
     const key = `last:${tabId}`;
@@ -233,6 +238,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "THREATSHIELD_BYPASS_URL" && message?.url) {
     bypassedUrls.add(message.url);
+    try {
+      const u = new URL(message.url);
+      bypassedUrls.add(u.origin + u.pathname);
+      bypassedUrls.add(u.hostname);
+    } catch {}
     sendResponse({ ok: true });
     return true;
   }
