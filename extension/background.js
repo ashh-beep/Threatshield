@@ -40,7 +40,11 @@ function shouldIgnoreUrl(url) {
     url.startsWith("edge://") ||
     url.startsWith("file://") ||
     url.startsWith("chrome-extension://") ||
-    url.startsWith("moz-extension://")
+    url.startsWith("moz-extension://") ||
+    url.includes("localhost:3000") ||
+    url.includes("localhost:5001") ||
+    url.includes("127.0.0.1:3000") ||
+    url.includes("127.0.0.1:5001")
   );
 }
 
