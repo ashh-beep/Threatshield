@@ -10,7 +10,7 @@ import joblib
 import numpy as np
 
 from backend.config import config
-from backend.models import db, User, Organization, Membership, Scan, ActivityLog, OrganizationAuthConfig, RiskScoreBypassRule, UserGroup, UserGroupMember
+from backend.models import db, User, Organization, Membership, Scan, ActivityLog, ActivityType, OrganizationAuthConfig, RiskScoreBypassRule, UserGroup, UserGroupMember
 
 from backend.features_from_url import extract_features_from_url, generate_reasons
 from backend.threat_api import check_openphish_sync
@@ -159,6 +159,47 @@ def create_app(config_name=None):
                     _page_inspect_store[url] = {"status": "pending"}
                 t = threading.Thread(target=_run_page_inspect, args=(url,), daemon=True)
                 t.start()
+
+            # Auto-save scan to PostgreSQL if user is authenticated via Bearer token
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                raw_token = auth_header.split(" ")[1]
+                try:
+                    import jwt
+                    payload = jwt.decode(raw_token, app.config['SECRET_KEY'], algorithms=['HS256'])
+                    user_id = payload.get('sub')
+                    if user_id:
+                        u = User.query.get(user_id)
+                        if u:
+                            org_id = payload.get('org_id') or (u.memberships[0].organization_id if u.memberships else None)
+                            scan_obj = Scan(
+                                user_id=u.id,
+                                organization_id=org_id,
+                                url=url,
+                                verdict=verdict.upper(),
+                                risk_score=risk_score,
+                                risk_color=risk_color,
+                                phishing_probability=round(proba_phish, 4),
+                                prediction=pred,
+                                reasons=reasons,
+                                stages={
+                                    "lexical": lexical_stage,
+                                    "threat_api": threat_stage
+                                }
+                            )
+                            db.session.add(scan_obj)
+                            db.session.add(ActivityLog(
+                                user_id=u.id,
+                                organization_id=org_id,
+                                type=ActivityType.SCAN_CREATED,
+                                description=f"User scanned URL: {url} ({verdict})",
+                                activity_metadata={"url": url, "verdict": verdict, "risk_score": risk_score},
+                                ip_address=request.remote_addr,
+                                user_agent=request.headers.get('User-Agent')
+                            ))
+                            db.session.commit()
+                except Exception as save_err:
+                    app.logger.warning(f"Failed to auto-save scan for analyze request: {save_err}")
 
             return jsonify({
                 "url": url,
