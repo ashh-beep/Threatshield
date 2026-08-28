@@ -34,17 +34,19 @@ async function loadAuth() {
 
 function shouldIgnoreUrl(url) {
   if (!url) return true;
+  const u = String(url).toLowerCase();
   return (
-    url.startsWith("chrome://") ||
-    url.startsWith("about:") ||
-    url.startsWith("edge://") ||
-    url.startsWith("file://") ||
-    url.startsWith("chrome-extension://") ||
-    url.startsWith("moz-extension://") ||
-    url.includes("localhost:3000") ||
-    url.includes("localhost:5001") ||
-    url.includes("127.0.0.1:3000") ||
-    url.includes("127.0.0.1:5001")
+    u.startsWith("chrome://") ||
+    u.startsWith("about:") ||
+    u.startsWith("edge://") ||
+    u.startsWith("file://") ||
+    u.startsWith("chrome-extension://") ||
+    u.startsWith("moz-extension://") ||
+    u.includes("localhost") ||
+    u.includes("127.0.0.1") ||
+    u.includes("0.0.0.0") ||
+    u.includes(":3000") ||
+    u.includes(":5001")
   );
 }
 
