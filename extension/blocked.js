@@ -61,7 +61,9 @@
 
   btnProceed.addEventListener('click', () => {
     if (targetUrl) {
-      window.location.href = targetUrl;
+      chrome.runtime.sendMessage({ type: 'THREATSHIELD_BYPASS_URL', url: targetUrl }, () => {
+        window.location.href = targetUrl;
+      });
     }
   });
 })();

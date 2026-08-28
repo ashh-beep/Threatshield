@@ -13,6 +13,8 @@ let settings = {
   risk_threshold: 70
 };
 
+const bypassedUrls = new Set();
+
 // Load token and user from storage on startup
 async function loadAuth() {
   const result = await chrome.storage.local.get([
@@ -160,6 +162,7 @@ async function handleUrl(tabId, url) {
   try {
     if (!tabId || !isHttpUrl(url) || shouldIgnoreUrl(url)) return;
     if (!settings.protection_enabled) return;
+    if (bypassedUrls.has(url)) return;
 
     // Debounce — skip if same URL was checked in the last 3 seconds
     const key = `last:${tabId}`;
@@ -222,6 +225,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Message listener
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "THREATSHIELD_BYPASS_URL" && message?.url) {
+    bypassedUrls.add(message.url);
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (message?.type === "THREATSHIELD_LOGOUT") {
     handleUnauthorized();
     sendResponse({ ok: true });
