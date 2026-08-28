@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ThreatShield",
   "version": "1.0.0",
-  "description": "Real-time phishing protection",
+  "description": "Real-time AI URL Phishing Protection",
   "permissions": [
     "storage",
     "tabs",
@@ -26,5 +26,14 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "ThreatShield"
-  }
+  },
+  "icons": {
+    "128": "icons/icon.svg"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html", "icons/icon.svg"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

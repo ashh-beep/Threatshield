@@ -188,7 +188,19 @@ async function handleUrl(tabId, url) {
           console.error('ThreatShield: Failed to save scan', e.message);
         }
       }
-      await sendResult(tabId, url, out);
+
+      const rawScore = Math.min(100, Math.max(0, Math.round(out?.risk_score ?? 0)));
+      const threshold = settings.risk_threshold || 70;
+      const rawVerdict = (out?.verdict || "Safe").toLowerCase();
+      const isThreat = rawScore >= threshold || out?.prediction === 1 || rawVerdict === "phishing" || rawVerdict === "dangerous" || rawVerdict === "suspicious";
+
+      // If URL is flagged as Red or Amber, redirect tab immediately to extension blocked.html page before site or DNS error loads
+      if (isThreat) {
+        const blockUrl = chrome.runtime.getURL(`blocked.html?url=${encodeURIComponent(url)}&verdict=${encodeURIComponent(out.verdict)}&score=${rawScore}&reasons=${encodeURIComponent(JSON.stringify(out.reasons || []))}`);
+        chrome.tabs.update(tabId, { url: blockUrl });
+      } else {
+        await sendResult(tabId, url, out);
+      }
     }
   } catch (e) {
     console.error("ThreatShield scan error:", e.message);

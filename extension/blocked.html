@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreatShield Protection Block</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+    body {
+      background: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #1e293b;
+    }
+    
+    /* Red / Dangerous Pastel Card */
+    .card-danger {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 28px;
+      padding: 40px;
+      max-width: 560px;
+      width: 100%;
+      box-shadow: 0 24px 64px rgba(220, 38, 38, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+
+    /* Amber / Suspicious Pastel Card */
+    .card-warning {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 28px;
+      padding: 40px;
+      max-width: 560px;
+      width: 100%;
+      box-shadow: 0 24px 64px rgba(217, 119, 6, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+
+    .brand-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 24px;
+    }
+    .brand-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: #4F46E5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand-name {
+      font-weight: 800;
+      font-size: 15px;
+      color: #0f172a;
+    }
+
+    .icon { font-size: 56px; margin-bottom: 16px; line-height: 1; }
+    
+    .title-danger {
+      font-size: 24px;
+      font-weight: 800;
+      color: #991b1b;
+      margin-bottom: 8px;
+      letter-spacing: -0.4px;
+    }
+
+    .title-warning {
+      font-size: 24px;
+      font-weight: 800;
+      color: #92400e;
+      margin-bottom: 8px;
+      letter-spacing: -0.4px;
+    }
+
+    .metrics {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .metric-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .badge-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .badge-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .badge-score { background: #ffffff; color: #1e293b; font-family: 'JetBrains Mono', monospace; border: 1px solid #e2e8f0; }
+    
+    .url-box {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #475569;
+      word-break: break-all;
+      text-align: left;
+      margin-bottom: 20px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .reasons {
+      text-align: left;
+      margin-bottom: 24px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      padding: 16px;
+      border-radius: 16px;
+    }
+    .reasons-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    .reason-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: #1e293b;
+      padding: 4px 0;
+      line-height: 1.45;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      all: unset;
+      cursor: pointer;
+      padding: 14px 24px;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .btn:hover { transform: translateY(-2px); }
+    
+    .btn-goback-danger {
+      background: #dc2626;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3);
+    }
+    .btn-goback-danger:hover { background: #b91c1c; }
+
+    .btn-goback-warning {
+      background: #d97706;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(217, 119, 6, 0.3);
+    }
+    .btn-goback-warning:hover { background: #b45309; }
+
+    .btn-proceed {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+    }
+    .btn-proceed:hover { background: #f8fafc; border-color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div id="card" class="card-danger">
+    <div class="brand-header">
+      <div class="brand-icon">
+        <svg width="14" height="14" viewBox="0 0 128 128" fill="none">
+          <path d="M48 64L58.6667 74.6667L80 53.3333M109.963 31.9147C87.4187 31.9147 68.32 23.472 64 15.7013C59.68 23.472 40.5813 31.9147 18.0373 31.9147C16.0373 48.0693 21.0373 78.4373 64 112C106.963 78.4373 111.963 48.0693 109.963 31.9147Z" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">ThreatShield</span>
+    </div>
+
+    <div id="icon" class="icon">🚨</div>
+    <div id="title" class="title-danger">High-Risk Threat Blocked</div>
+    
+    <div class="metrics">
+      <span id="badge-verdict" class="metric-badge badge-danger">Verdict: Phishing</span>
+      <span id="badge-score" class="metric-badge badge-score">Risk Score: 88%</span>
+    </div>
+
+    <div id="url-box" class="url-box">URL: http://example.com</div>
+
+    <div class="reasons">
+      <div class="reasons-title">Threat Intelligence Summary</div>
+      <div id="reasons-list"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-goback-danger" id="btn-goback">🛡️ Go Back to Safety</button>
+      <button class="btn btn-proceed" id="btn-proceed">Proceed Anyway</button>
+    </div>
+  </div>
+
+  <script src="blocked.js"></script>
+</body>
+</html>
