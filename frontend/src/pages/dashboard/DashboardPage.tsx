@@ -71,6 +71,11 @@ export function DashboardPage() {
   useEffect(() => {
     fetchScans();
     fetchStats();
+    const pollInterval = setInterval(() => {
+      fetchScans();
+      fetchStats();
+    }, 4000);
+    return () => clearInterval(pollInterval);
   }, [fetchScans, fetchStats]);
 
   useEffect(() => {

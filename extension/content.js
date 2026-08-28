@@ -443,4 +443,26 @@
       return;
     }
   });
+
+  // ── Auto-Sync Token from Web App (localhost:3000) ──────────────────────────
+  try {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      const syncToken = () => {
+        const token = localStorage.getItem('access_token');
+        const userStr = localStorage.getItem('user');
+        if (token) {
+          try {
+            const user = userStr ? JSON.parse(userStr) : null;
+            chrome.runtime.sendMessage({
+              type: 'THREATSHIELD_SETTINGS_UPDATE',
+              token: token,
+              user: user
+            });
+          } catch {}
+        }
+      };
+      syncToken();
+      window.addEventListener('storage', syncToken);
+    }
+  } catch {}
 })();

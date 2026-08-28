@@ -229,6 +229,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   
   if (message?.type === "THREATSHIELD_SETTINGS_UPDATE") {
+    if (message.token) {
+      currentToken = message.token;
+      chrome.storage.local.set({ threatshield_token: message.token, gatekeeper_token: message.token });
+    }
+    if (message.user) {
+      currentUser = message.user;
+      chrome.storage.local.set({ threatshield_user: message.user, gatekeeper_user: message.user });
+    }
     if (message.protection_enabled !== undefined) {
       settings.protection_enabled = message.protection_enabled;
     }

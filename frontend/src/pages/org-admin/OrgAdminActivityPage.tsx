@@ -106,6 +106,10 @@ export function OrgAdminActivityPage() {
 
   useEffect(() => {
     loadUserScans();
+    const interval = setInterval(() => {
+      loadUserScans();
+    }, 4000);
+    return () => clearInterval(interval);
   }, [selectedUser, selectedVerdict, scansPage]);
 
   // Load Audit Logs
