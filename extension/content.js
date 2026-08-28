@@ -272,14 +272,14 @@
     }, 2500);
   }
 
-  // ── Protection Overlay Handler (For Risk Score ≥ Threshold) ─────────────
+  // ── Protection Overlay Handler (Strict Block for Red / Confirmation for Amber) ─────────────
 
   function showProtectionOverlay(payload) {
     removeAll();
     const { url, verdict, score, threshold, reasons, reportUrl } = payload;
 
     const isPhishing = verdict.toLowerCase() === "phishing" || verdict.toLowerCase() === "dangerous";
-    const titleText = isPhishing ? "Phishing Threat Blocked" : "Suspicious Website Detected";
+    const titleText = isPhishing ? "Strict Security Block: Malicious Website" : "Suspicious Website Warning";
     const icon = isPhishing ? "🚨" : "⚠️";
     const badgeClass = isPhishing ? "ts-badge-danger" : "ts-badge-warning";
     const cardClass = isPhishing ? "ts-card" : "ts-card ts-card-suspicious";
@@ -288,6 +288,29 @@
     const reasonsListHtml = (reasons && reasons.length > 0 ? reasons : ["Potential phishing pattern or brand impersonation detected."])
       .map(r => `<div class="ts-reason-item"><span>•</span><span>${esc(r)}</span></div>`)
       .join("");
+
+    // RED (Dangerous/Phishing): STRICT BLOCK — No continue button allowed!
+    // AMBER (Suspicious): CONFIRMATION PROMPT — Requires explicit user confirmation to proceed.
+    const actionsHtml = isPhishing
+      ? `
+        <div class="ts-actions">
+          <button class="ts-btn ts-btn-block" id="ts-btn-block" style="width: 100%;">⛔ Access Denied — Return to Safety</button>
+          <button class="ts-btn ts-btn-report" id="ts-btn-report">Threat Details</button>
+        </div>
+        <p style="color: rgba(239,68,68,0.8); font-size: 11px; margin-top: 12px; text-align: center;">
+          Access to this website is strictly restricted by your organization security policy.
+        </p>
+      `
+      : `
+        <div class="ts-actions">
+          <button class="ts-btn ts-btn-block" id="ts-btn-block">🛡️ Leave Site (Recommended)</button>
+          <button class="ts-btn ts-btn-continue" id="ts-btn-continue">I Understand, Proceed</button>
+          <button class="ts-btn ts-btn-report" id="ts-btn-report">Details</button>
+        </div>
+        <p style="color: rgba(245,158,11,0.8); font-size: 11px; margin-top: 12px; text-align: center;">
+          Exercise caution before entering any credentials or downloading files.
+        </p>
+      `;
 
     const el = document.createElement("div");
     el.id = OVERLAY_ID;
@@ -304,21 +327,17 @@
         <div class="ts-url-box">URL: ${esc(url)}</div>
 
         <div class="ts-reasons">
-          <div class="ts-reasons-title">Threat Intelligence Summary</div>
+          <div class="ts-reasons-title">Security Policy & Threat Intelligence</div>
           ${reasonsListHtml}
         </div>
 
-        <div class="ts-actions">
-          <button class="ts-btn ts-btn-block" id="ts-btn-block">⛔ Block & Go Back</button>
-          <button class="ts-btn ts-btn-continue" id="ts-btn-continue">Continue Anyway</button>
-          <button class="ts-btn ts-btn-report" id="ts-btn-report">Full Report</button>
-        </div>
+        ${actionsHtml}
       </div>
     `;
     (document.body || document.documentElement).appendChild(el);
 
-    // Block action: Navigates back in history or blocks navigation
-    el.querySelector("#ts-btn-block").addEventListener("click", () => {
+    // Block action: Navigates back in history or redirects to blank
+    el.querySelector("#ts-btn-block")?.addEventListener("click", () => {
       if (window.history.length > 1) {
         window.history.back();
       } else {
@@ -327,13 +346,13 @@
       el.remove();
     });
 
-    // Continue Anyway action: Dismisses overlay to allow access
-    el.querySelector("#ts-btn-continue").addEventListener("click", () => {
+    // Continue action (only present for AMBER/Suspicious confirmation prompt)
+    el.querySelector("#ts-btn-continue")?.addEventListener("click", () => {
       el.remove();
     });
 
     // Full Report action
-    el.querySelector("#ts-btn-report").addEventListener("click", () => {
+    el.querySelector("#ts-btn-report")?.addEventListener("click", () => {
       openTab(reportUrl);
     });
   }
