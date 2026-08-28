@@ -52,10 +52,10 @@
     .join('');
 
   btnGoBack.addEventListener('click', () => {
-    if (window.history.length > 2) {
+    if (window.history.length > 1) {
       window.history.back();
     } else {
-      window.location.href = 'about:blank';
+      window.location.href = 'https://www.google.com';
     }
   });
 

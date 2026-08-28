@@ -380,7 +380,7 @@
         </div>
 
         <div class="ts-actions">
-          <button class="ts-btn ${btnGoBackClass}" id="ts-btn-block">🛡️ Go Back to Safety</button>
+          <button class="ts-btn ${btnGoBackClass}" id="ts-btn-block">Back</button>
           <button class="ts-btn ts-btn-proceed" id="ts-btn-continue">Proceed Anyway</button>
           <button class="ts-btn ts-btn-report" id="ts-btn-report">Details</button>
         </div>
@@ -391,12 +391,12 @@
     `;
     (document.body || document.documentElement).appendChild(el);
 
-    // Go Back to Safety action
+    // Back action: Navigates to previous page or search engine
     el.querySelector("#ts-btn-block")?.addEventListener("click", () => {
       if (window.history.length > 1) {
         window.history.back();
       } else {
-        window.location.href = "about:blank";
+        window.location.href = "https://www.google.com";
       }
       el.remove();
     });
